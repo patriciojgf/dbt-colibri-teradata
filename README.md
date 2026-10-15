@@ -28,6 +28,16 @@ Built for data teams who want transparent, flexible lineage tracking without ven
 
 Documentation site: [https://www.docs.colibri-data.com](https://www.docs.colibri-data.com)
 
+## Teradata
+
+This fork adds support for the `dbt-teradata` adapter. Teradata uses two-level names (`database.table`), so lineage is resolved against the `relation_name` that dbt-teradata emits. Teradata-specific SQL (`SEL`, `QUALIFY`, `ZEROIFNULL`, `CAST ... FORMAT`, `TOP`, `SAMPLE`, `LOCKING ROW FOR ACCESS`) is parsed with SQLGlot's Teradata dialect.
+
+```bash
+pip install git+https://github.com/patriciojgf/dbt-colibri-teradata
+dbt compile && dbt docs generate
+colibri generate
+```
+
 ## Quick Start
 
 ### Installation

@@ -22,7 +22,7 @@ def _table_ref(dialect):
     db = catalog_table_name("test_db", info)
     schema = catalog_table_name("raw_schema", info)
     table = catalog_table_name("source_table", info)
-    if dialect in ("clickhouse", "oracle", "starrocks"):
+    if dialect in ("clickhouse", "oracle", "starrocks", "teradata"):
         return f"{schema}.{table}"
     return f"{db}.{schema}.{table}"
 

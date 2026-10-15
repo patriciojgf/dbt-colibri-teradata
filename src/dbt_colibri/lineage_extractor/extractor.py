@@ -211,7 +211,7 @@ class DbtColumnLineageExtractor:
         Raises:
             ValueError: If adapter_type is not found or not supported
         """
-        SUPPORTED_ADAPTERS = {'snowflake', 'bigquery', 'redshift', 'duckdb', 'postgres', 'databricks', 'athena', 'trino', 'sqlserver', 'clickhouse', 'oracle', 'fabric', 'starrocks', 'vertica'}
+        SUPPORTED_ADAPTERS = {'snowflake', 'bigquery', 'redshift', 'duckdb', 'postgres', 'databricks', 'athena', 'trino', 'sqlserver', 'clickhouse', 'oracle', 'fabric', 'starrocks', 'vertica', 'teradata'}
         
         # Get adapter_type from manifest metadata
         adapter_type = self.adapter_type
@@ -960,7 +960,7 @@ class DbtColumnLineageExtractor:
 
         column_name_raw = node.name.split(".")[-1]
 
-        if self.dialect in ('clickhouse', 'starrocks'):
+        if self.dialect in ('clickhouse', 'starrocks', 'teradata'):
             table_name = f"{node.source.db}.{node.source.name}"
         elif self.dialect == 'oracle':
             table_name = self._table_key_from_sqlglot_table_node(node)

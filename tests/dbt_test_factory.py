@@ -55,6 +55,7 @@ DIALECTS: dict[str, DialectInfo] = {
     "trino": DialectInfo("trino", "lower", False, "trino"),
     "tsql": DialectInfo("tsql", "lower", False, "sqlserver", sqlglot_dialect="tsql"),
     "databricks": DialectInfo("databricks", "lower", False, "databricks"),
+    "teradata": DialectInfo("teradata", "lower", False, "teradata"),
 }
 
 # Dialects where ``quote: true`` in dbt meaningfully preserves casing.
@@ -191,7 +192,7 @@ def build_test_artifacts(
     col_refs = ", ".join(expressions)
     if info.name in ("clickhouse", "starrocks"):
         table_ref = f"{cat_src_schema}.{cat_src_table}"
-    elif info.name == "oracle":
+    elif info.name in ("oracle", "teradata"):
         table_ref = f"{cat_src_schema}.{cat_src_table}"
     else:
         table_ref = f"{cat_db}.{cat_src_schema}.{cat_src_table}"
@@ -226,6 +227,10 @@ def build_test_artifacts(
                 s = catalog_table_name(schema, info)
                 t = catalog_table_name(table, info)
                 return f"`{d}`.`{s}`.`{t}`"
+            elif info.name == "teradata":
+                s = catalog_table_name(schema, info)
+                t = catalog_table_name(table, info)
+                return f'"{s}"."{t}"'
             elif info.name == "oracle":
                 s = catalog_table_name(schema, info)
                 t = catalog_table_name(table, info)
