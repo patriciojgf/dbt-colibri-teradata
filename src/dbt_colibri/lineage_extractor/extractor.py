@@ -1,11 +1,9 @@
 
 from sqlglot.lineage import SqlglotError, exp
 from sqlglot.schema import ensure_schema
-from sqlglot.tokens import TokenType, Tokenizer
 import logging
 from ..utils import json_utils, parsing_utils
 from .lineage import lineage, prepare_scope, extract_structural_lineage
-import re
 from importlib.metadata import version, PackageNotFoundError
 import gc
 
@@ -13,15 +11,10 @@ import gc
 def _normalize_column_name(name: str) -> str:
     """Normalize a column name for lineage resolution.
 
-    - Strips surrounding single/double quotes.
-    - Removes PostgreSQL-style type casts (``::type``).
-    - Strips leading ``$`` (Snowflake session variable prefix).
+    Teradata identifiers are case-insensitive, quoted or not, so names are
+    unquoted and lowercased.
     """
-    name = name.strip('"').strip("'").strip("`")
-    name = re.sub(r"::\s*\w+$", "", name)
-    if name.startswith("$"):
-        name = name[1:]
-    return name
+    return name.strip('"').lower()
 
 
 def get_select_expressions(expr: exp.Expression) -> list[exp.Expression]:
@@ -52,11 +45,9 @@ class DbtColumnLineageExtractor:
         # Read manifest and catalog files
         self.manifest = json_utils.read_json(manifest_path)
         self.catalog = json_utils.read_json(catalog_path)
-        self.schema_dict = self._generate_schema_dict_from_catalog()
         self.adapter_type = self.manifest.get("metadata", {}).get("adapter_type")
         self.dialect = self._detect_adapter_type()
-        # self.node_mapping = self._get_dict_mapping_full_table_name_to_dbt_node()
-        self._quoted_columns_lookup = self._build_quoted_columns_lookup()
+        self.schema_dict = self._generate_schema_dict_from_catalog()
         self.nodes_with_columns = self.build_nodes_with_columns()
         self._table_to_node = {k.lower(): v for k, v in self.nodes_with_columns.items()}
         # Store references to parent and child maps for easy access
@@ -141,106 +132,48 @@ class DbtColumnLineageExtractor:
 
     def _get_colibri_version(self):
         try:
-            return version("dbt-colibri")
+            return version("dbt-colibri-teradata")
         except PackageNotFoundError:
             return "unknown"
         
-    # Adapters where ``quote: true`` means the identifier is case-sensitive.
-    _CASE_SENSITIVE_QUOTE_ADAPTERS = frozenset({
-        "snowflake", "postgres", "oracle", "clickhouse", "starrocks",
-    })
+    def _resolve_column_name(self, column_name, node_id=None):
+        """Return the canonical (unquoted, lowercase) column name.
 
-    def _build_quoted_columns_lookup(self):
-        """Build a lookup of quoted columns (quote=True) across all manifest nodes.
-
-        Returns a dict of ``{node_id: {lower_col_name: original_col_name}}``
-        so that downstream code can preserve the original casing for columns
-        explicitly marked as quoted in the dbt manifest.
-
-        Only populated for dialects where quoting is case-sensitive (e.g.
-        Snowflake, Postgres, Oracle, ClickHouse).  On case-insensitive
-        dialects (BigQuery, DuckDB, etc.) quoting is used to escape reserved
-        words but does not affect casing, so the lookup stays empty.
+        Teradata compares identifiers case-insensitively even when they are
+        quoted, so every column is keyed in lowercase.
         """
-        if self.adapter_type not in self._CASE_SENSITIVE_QUOTE_ADAPTERS:
-            return {}
-        lookup = {}
-        for node_id, node_data in {**self.manifest.get("nodes", {}), **self.manifest.get("sources", {})}.items():
-            columns = node_data.get("columns")
-            if not columns:
-                continue
-            quoted = {}
-            for col_name, col_info in columns.items():
-                if col_info.get("quote") is True:
-                    quoted[col_name.lower()] = col_name
-            if quoted:
-                lookup[node_id.lower()] = quoted
-        return lookup
-
-    def _get_quoted_columns(self, node_id):
-        """Return ``{lower_col_name: original_col_name}`` for quoted columns of *node_id*."""
-        lookup = getattr(self, "_quoted_columns_lookup", None)
-        if lookup is None:
-            return {}
-        # Keyed by lowercased id: catalog nodes arrive with a lowercased unique_id.
-        return lookup.get(node_id.lower(), {})
-
-    def _resolve_column_name(self, column_name, node_id):
-        """Return the properly-cased column name.
-
-        For columns with ``quote: true`` in the manifest, the original casing
-        is preserved.  All other columns are lowercased for consistency.
-        Handles column names that may arrive with surrounding double-quotes
-        from SQLGlot (e.g. ``'"quotedCol"'``).
-        """
-        # Strip surrounding quotes that SQLGlot may add
-        stripped = column_name.strip('"').strip("`")
-        col_lower = stripped.lower()
-        quoted = self._get_quoted_columns(node_id)
-        if col_lower in quoted:
-            return quoted[col_lower]
-        return col_lower
+        return column_name.strip('"').lower()
 
     def _detect_adapter_type(self):
-        """
-        Detect the adapter type from the manifest metadata.
-        
+        """Validate that the manifest was produced by dbt-teradata.
+
         Returns:
-            str: The detected adapter type
-            
+            str: The SQLGlot dialect name ("teradata").
+
         Raises:
-            ValueError: If adapter_type is not found or not supported
+            ValueError: If adapter_type is missing or is not teradata.
         """
-        SUPPORTED_ADAPTERS = {'snowflake', 'bigquery', 'redshift', 'duckdb', 'postgres', 'databricks', 'athena', 'trino', 'sqlserver', 'clickhouse', 'oracle', 'fabric', 'starrocks', 'vertica', 'teradata'}
-        
-        # Get adapter_type from manifest metadata
         adapter_type = self.adapter_type
-        
+
         if not adapter_type:
             raise ValueError(
                 "adapter_type not found in manifest metadata. "
                 "Please ensure you're using a valid dbt manifest.json file."
             )
-        
-        if adapter_type not in SUPPORTED_ADAPTERS:
+
+        if adapter_type != "teradata":
             raise ValueError(
                 f"Unsupported adapter type '{adapter_type}'. "
-                f"Supported adapters are: {', '.join(sorted(SUPPORTED_ADAPTERS))}"
+                "This build of dbt-colibri only supports the dbt-teradata adapter."
             )
-        
-        self.logger.info(f"Detected adapter type: {adapter_type}")
-        if adapter_type == "sqlserver":
-            # Adapter type != Dialect Name for all adapters.
-            return "tsql"
-        if adapter_type == "vertica":
-            self.logger.warning(
-                "Vertica is not fully supported because SQLGlot has no Vertica "
-                "dialect. Falling back to the PostgreSQL parser; generated "
-                "lineage may be incomplete or incorrect."
-            )
-            return "postgres"
 
-        return adapter_type
+        self.logger.info("Detected adapter type: teradata")
+        return "teradata"
+
+    @staticmethod
+    def _relation_key(schema, name):
+        """Two-part Teradata relation key: ``database.object``, lowercased."""
+        return f"{(schema or '').strip()}.{(name or '').strip()}".lower()
 
     def build_nodes_with_columns(self):
         """
@@ -256,11 +189,9 @@ class DbtColumnLineageExtractor:
             if node.get('config', {}).get('materialized') != 'ephemeral' and not node.get("relation_name"):
                 continue
             if node['config'].get('materialized') == 'ephemeral':
-                relation_name = node['database'] + '.' + node['schema'] + '.' + node.get('alias', node.get('name'))
+                relation_name = self._relation_key(node['schema'], node.get('alias') or node.get('name'))
             else:
-                relation_name = parsing_utils.normalize_table_relation_name(
-                    node["relation_name"], dialect=self.dialect
-                )
+                relation_name = parsing_utils.normalize_table_relation_name(node["relation_name"])
 
             # Start with manifest node info
             merged[relation_name] = {
@@ -292,15 +223,11 @@ class DbtColumnLineageExtractor:
                 continue
             try:
                 if node.get("config", {}).get("materialized") == "ephemeral":
-                    relation_name = (
-                        (node.get("database") or "").strip() + "." +
-                        (node.get("schema") or "").strip() + "." +
-                        (node.get("alias") or node.get("name"))
+                    relation_name = self._relation_key(
+                        node.get("schema"), node.get("alias") or node.get("name")
                     )
                 else:
-                    relation_name = parsing_utils.normalize_table_relation_name(
-                        node["relation_name"], dialect=self.dialect
-                    )
+                    relation_name = parsing_utils.normalize_table_relation_name(node["relation_name"])
                 if relation_name:
                     mapping[str(relation_name).lower()] = node_id
             except Exception as e:
@@ -309,35 +236,25 @@ class DbtColumnLineageExtractor:
         return mapping
     
     def _generate_schema_dict_from_catalog(self, catalog=None):
+        """Build a two-level SQLGlot schema: ``{database: {table: {column: type}}}``.
+
+        dbt-teradata's catalog leaves ``database`` empty and puts the Teradata
+        database in ``schema``. Everything is lowercased because Teradata
+        identifiers are case-insensitive.
+        """
         if not catalog:
             catalog = self.catalog
         schema_dict = {}
 
         def add_to_schema_dict(node):
             dbt_node = DBTNodeCatalog(node)
-            db_name, schema_name, table_name = dbt_node.database, dbt_node.schema, dbt_node.name
-
-            if db_name not in schema_dict:
-                schema_dict[db_name] = {}
-            if schema_name not in schema_dict[db_name]:
-                schema_dict[db_name][schema_name] = {}
-            if table_name not in schema_dict[db_name][schema_name]:
-                schema_dict[db_name][schema_name][table_name] = {}
-
-            col_types = dbt_node.get_column_types()
-
-            # Quote columns marked quote=True so SQLGlot matches them
-            # case-sensitively. Use the catalog spelling, not the YAML one: it is
-            # what the warehouse stores (Snowflake/Oracle ``IS_GIFT`` for YAML
-            # ``is_gift``) and what compiled SQL resolves against.
-            quoted_cols = self._get_quoted_columns(dbt_node.unique_id)
-            if quoted_cols:
-                col_types = {
-                    (f'"{col_name}"' if col_name.lower() in quoted_cols else col_name): col_type
-                    for col_name, col_type in col_types.items()
-                }
-
-            schema_dict[db_name][schema_name][table_name].update(col_types)
+            schema_name = (dbt_node.schema or "").lower()
+            table_name = (dbt_node.name or "").lower()
+            if not schema_name or not table_name:
+                return
+            table = schema_dict.setdefault(schema_name, {}).setdefault(table_name, {})
+            for col_name, col_type in dbt_node.get_column_types().items():
+                table[col_name.lower()] = col_type
 
         for node in catalog.get("nodes", {}).values():
             add_to_schema_dict(node)
@@ -347,23 +264,16 @@ class DbtColumnLineageExtractor:
 
         return schema_dict
 
-    def _get_dict_mapping_full_table_name_to_dbt_node(self):
-        mapping = {}
-        for key, node in self.manifest["nodes"].items():
-            # Only include model, source, and seed nodes
-            if node.get("resource_type") in ["model", "source", "seed", "snapshot"]:
-                try:
-                    dbt_node = DBTNodeManifest(node)
-                    mapping[dbt_node.full_table_name] = key
-                except Exception as e:
-                    self.logger.warning(f"Error processing node {key}: {e}")
-        for key, node in self.manifest["sources"].items():
-            try:
-                dbt_node = DBTNodeManifest(node)
-                mapping[dbt_node.full_table_name] = key
-            except Exception as e:
-                self.logger.warning(f"Error processing source {key}: {e}")
-        return mapping
+    def _parse(self, sql):
+        """Parse Teradata SQL and fold every identifier to unquoted lowercase.
+
+        A leading ``LOCKING ROW FOR ACCESS`` modifier is dropped so lineage sees
+        the underlying SELECT.
+        """
+        parsed = parsing_utils.parse_sql(sql, dialect=self.dialect)
+        while isinstance(parsed, exp.LockingStatement):
+            parsed = parsed.expression
+        return parsing_utils.normalize_identifiers(parsed)
 
     def _get_list_of_columns_for_a_dbt_node(self, node):
         if node in self.catalog["nodes"]:
@@ -492,16 +402,7 @@ class DbtColumnLineageExtractor:
         schema = self._generate_schema_dict_from_catalog(parent_catalog)
 
         try:
-            sql = self._sanitize_sql_for_parsing(
-                compiled,
-                schema=schema,
-                model_node=node_id,
-            )
-            parsed = parsing_utils.parse_sql(sql, dialect=self.dialect)
-            if self.dialect == "postgres" and not self._schema_has_quoted_keys(schema):
-                parsed = parsing_utils.remove_quotes(parsed)
-            if self.dialect == "bigquery":
-                parsed = parsing_utils.remove_upper(parsed)
+            parsed = self._parse(compiled)
             qualified, _ = prepare_scope(parsed, schema=schema, dialect=self.dialect)
         except Exception as e:
             self.logger.warning(
@@ -600,6 +501,11 @@ class DbtColumnLineageExtractor:
             if node is None:
                 return
             ephemeral_id = self._match_ephemeral_cte(getattr(node, "name", None))
+            if ephemeral_id is None:
+                # When the CTE is aliased (``JOIN __dbt__cte__x s``) the node is
+                # named after the alias; the CTE name is in reference_node_name.
+                ref = (getattr(node, "reference_node_name", "") or "").lower()
+                ephemeral_id = self._ephemeral_cte_to_node.get(ref)
             if ephemeral_id is not None:
                 col = node.name.rsplit(".", 1)[-1]
                 yield (
@@ -641,123 +547,6 @@ class DbtColumnLineageExtractor:
             changed = True
         return parsed.sql(dialect=self.dialect) if changed else sql
 
-    @staticmethod
-    def _strip_wrapping_identifier_quotes(name):
-        if (
-            isinstance(name, str)
-            and len(name) >= 2
-            and name[0] == name[-1]
-            and name[0] in {'"', "`", "'"}
-        ):
-            return name[1:-1]
-        return name
-
-    def _known_double_quoted_starrocks_identifiers(
-        self,
-        schema=None,
-        selected_columns=None,
-        model_node=None,
-    ):
-        identifiers = set()
-
-        if schema:
-            for db in schema.values():
-                for sch in db.values():
-                    for tbl in sch.values():
-                        for col in tbl:
-                            stripped = self._strip_wrapping_identifier_quotes(col)
-                            if col != stripped or " " in stripped:
-                                identifiers.add(stripped.lower())
-
-        for col in selected_columns or []:
-            stripped = self._strip_wrapping_identifier_quotes(col)
-            if " " in stripped:
-                identifiers.add(stripped.lower())
-
-        if model_node:
-            for col in self._get_quoted_columns(model_node).values():
-                identifiers.add(col.lower())
-
-        return identifiers
-
-    def _replace_starrocks_double_quoted_identifiers(
-        self,
-        sql,
-        schema=None,
-        selected_columns=None,
-        model_node=None,
-    ):
-        identifiers = self._known_double_quoted_starrocks_identifiers(
-            schema=schema,
-            selected_columns=selected_columns,
-            model_node=model_node,
-        )
-        if not identifiers:
-            return sql
-
-        tokens = Tokenizer(dialect=self.dialect).tokenize(sql)
-        pieces = []
-        last_end = 0
-        changed = False
-
-        for token in tokens:
-            original = sql[token.start:token.end + 1]
-            if (
-                token.token_type == TokenType.IDENTIFIER
-                and original.startswith('"')
-                and original.endswith('"')
-                and token.text.lower() in identifiers
-            ):
-                pieces.append(sql[last_end:token.start])
-                pieces.append(f"`{token.text.replace('`', '``')}`")
-                last_end = token.end + 1
-                changed = True
-
-        if not changed:
-            return sql
-
-        pieces.append(sql[last_end:])
-        return "".join(pieces)
-
-    def _sanitize_sql_for_parsing(
-        self,
-        sql,
-        schema=None,
-        selected_columns=None,
-        model_node=None,
-    ):
-        # Placeholder for any SQL sanitization needed before parsing
-        if self.dialect == "starrocks":
-            sql = self._replace_starrocks_double_quoted_identifiers(
-                sql,
-                schema=schema,
-                selected_columns=selected_columns,
-                model_node=model_node,
-            )
-
-        if self.dialect != "oracle":
-            return sql
-
-        sql = re.sub(r"(?i)\bLISTAGG\s*\(\s*DISTINCT\s+", "LISTAGG(", sql)
-
-        sql = re.sub(
-            r"(?is)\bON\s+OVERFLOW\s+(?:TRUNCATE|ERROR)\b(?:\s+'[^']*')?(?:\s+(?:WITH|WITHOUT)\s+COUNT)?",
-            "",
-            sql,
-        )
-
-        return sql
-
-    @staticmethod
-    def _schema_has_quoted_keys(schema):
-        """Return True if any column key in *schema* is double-quote-wrapped."""
-        for db in schema.values():
-            for sch in db.values():
-                for tbl in sch.values():
-                    if any(k.startswith('"') for k in tbl):
-                        return True
-        return False
-
     def _warn_unresolved_qualified_columns(self, scope, schema, model_node):
         """Surface columns qualified to a known table but absent from the catalog.
 
@@ -795,20 +584,7 @@ class DbtColumnLineageExtractor:
 
     def _extract_lineage_for_model(self, model_sql, schema, model_node, resource_type, selected_columns=[]):
         lineage_map = {}
-        model_sql_for_parse = self._sanitize_sql_for_parsing(
-            model_sql,
-            schema=schema,
-            selected_columns=selected_columns,
-            model_node=model_node,
-        )
-        parsed_model_sql = parsing_utils.parse_sql(model_sql_for_parse, dialect=self.dialect)
-        # sqlglot does not unfold * to schema when the schema has quotes, or upper (for BigQuery)
-        # Skip remove_quotes when the schema contains quoted column keys, as
-        # stripping AST quotes prevents SQLGlot from matching case-sensitive columns.
-        if self.dialect == "postgres" and not self._schema_has_quoted_keys(schema):
-            parsed_model_sql = parsing_utils.remove_quotes(parsed_model_sql)
-        if self.dialect == "bigquery":
-            parsed_model_sql = parsing_utils.remove_upper(parsed_model_sql)
+        parsed_model_sql = self._parse(model_sql)
         qualified_expr, scope = prepare_scope(parsed_model_sql, schema=schema, dialect=self.dialect)
         self._warn_unresolved_qualified_columns(scope, schema, model_node)
 
@@ -960,12 +736,7 @@ class DbtColumnLineageExtractor:
 
         column_name_raw = node.name.split(".")[-1]
 
-        if self.dialect in ('clickhouse', 'starrocks', 'teradata'):
-            table_name = f"{node.source.db}.{node.source.name}"
-        elif self.dialect == 'oracle':
-            table_name = self._table_key_from_sqlglot_table_node(node)
-        else:
-            table_name = f"{node.source.catalog}.{node.source.db}.{node.source.name}"
+        table_name = self._table_key_from_sqlglot_table_node(node)
 
         match = self._table_to_node.get(table_name.lower())
         if match:
@@ -976,10 +747,8 @@ class DbtColumnLineageExtractor:
 
             # Try different variations of the table name
             table_variations = [
-                table_name,  # full: .public.customers_hardcoded or test_db.public.customers_hardcoded
-                table_name.lstrip("."),  # without leading dot: public.customers_hardcoded
-                f"{node.source.db}.{node.source.name}".lower(),  # db.table: public.customers_hardcoded
-                node.source.name.lower(),  # just table name: customers_hardcoded
+                table_name,  # database.table
+                node.source.name.lower(),  # just the table name
             ]
 
             # Remove duplicates while preserving order
@@ -1215,29 +984,15 @@ class DbtColumnLineageExtractor:
                 columns = self._get_list_of_columns_for_a_dbt_node(model_node)
 
                 # Parse and qualify once per model
-                model_sql_for_parse = self._sanitize_sql_for_parsing(
-                    model_sql,
-                    schema=schema,
-                    selected_columns=columns,
-                    model_node=model_node,
-                )
-                parsed_model_sql = parsing_utils.parse_sql(model_sql_for_parse, dialect=self.dialect)
-                if self.dialect == "postgres" and not self._schema_has_quoted_keys(schema):
-                    parsed_model_sql = parsing_utils.remove_quotes(parsed_model_sql)
-                if self.dialect == "bigquery":
-                    parsed_model_sql = parsing_utils.remove_upper(parsed_model_sql)
+                parsed_model_sql = self._parse(model_sql)
                 qualified_expr, scope = prepare_scope(parsed_model_sql, schema=schema, dialect=self.dialect)
                 self._warn_unresolved_qualified_columns(scope, schema, model_node)
 
                 # Initialize parents entry for this model
                 model_parents: dict = {}
 
-                quoted_cols = self._get_quoted_columns(model_node)
-
                 for column_name in columns:
-                    # Preserve original casing for quoted columns
-                    col_lower = column_name.lower()
-                    column_key = quoted_cols[col_lower] if col_lower in quoted_cols else col_lower
+                    column_key = column_name.lower()
                     # Snapshot special columns
                     if model_info.get("resource_type") == "snapshot" and column_name in [
                         "dbt_valid_from",
@@ -1411,7 +1166,6 @@ class DBTNodeManifest:
         self.database = node_data["database"] or ""
         self.schema = node_data["schema"]
         self.relation_name = parsing_utils.normalize_table_relation_name(node_data["relation_name"])
-        # self.dialect = dialect
         # Check alias first
         if node_data.get("alias"):
             self.name = node_data.get("alias")

@@ -444,8 +444,15 @@ def _resolve_structural_column(col, scope, dialect, visited, trim_selects):
 
     if isinstance(source, Scope):
         # CTE/subquery → trace through using to_node() (same recursive logic)
+        reference_node_name = None
+        if source.scope_type == ScopeType.CTE:
+            # Keep the CTE name even when it is aliased (``JOIN cte s``), so
+            # callers can attribute the column to the CTE (e.g. an ephemeral).
+            selected_node, _ = scope.selected_sources.get(scope_name, (None, None))
+            reference_node_name = selected_node.name if selected_node else None
         return to_node(col.name, scope=source, dialect=dialect,
-                       scope_name=scope_name, trim_selects=trim_selects, visited=visited)
+                       scope_name=scope_name, reference_node_name=reference_node_name,
+                       trim_selects=trim_selects, visited=visited)
     elif source and isinstance(source, exp.Table):
         # Leaf table → create leaf Node directly
         return Node(name=col.sql(comments=False), source=source, expression=source)

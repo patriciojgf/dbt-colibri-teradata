@@ -8,21 +8,9 @@ from ..report.generator import DbtColibriReportGenerator
 from importlib.metadata import version, PackageNotFoundError
 
 
-def _is_telemetry_disabled(cli_flag: bool) -> bool:
-    """Check if telemetry is disabled via CLI flag or environment variables.
-
-    Telemetry is disabled if any of the following are true:
-      - ``--disable-telemetry`` CLI flag is passed
-      - ``DO_NOT_TRACK=1`` environment variable is set (community standard)
-      - ``DISABLE_COLIBRI_TELEMETRY=1`` environment variable is set
-    """
-    if cli_flag:
-        return True
-    if os.environ.get("DO_NOT_TRACK", "").strip() == "1":
-        return True
-    if os.environ.get("DISABLE_COLIBRI_TELEMETRY", "").strip() == "1":
-        return True
-    return False
+def _is_telemetry_enabled(cli_flag: bool) -> bool:
+    """Telemetry is off by default in this build; only --enable-telemetry turns it on."""
+    return bool(cli_flag)
 
 COLIBRI_LOGO = r"""
  ______     ______     __         __     ______     ______     __    
@@ -33,22 +21,16 @@ COLIBRI_LOGO = r"""
 """
 
 try:
-    __version__ = version("dbt-colibri")
+    __version__ = version("dbt-colibri-teradata")
 except PackageNotFoundError:
     __version__ = "unknown"
 
 @click.group()
-@click.version_option(__version__, prog_name="dbt-colibri")
+@click.version_option(__version__, prog_name="dbt-colibri-teradata")
 def cli():
-    """dbt-colibri CLI tool"""
+    """dbt-colibri CLI tool (Teradata build)"""
     click.echo(f"{COLIBRI_LOGO}\n")
-    click.echo("Welcome to dbt-colibri 🐦")
-
-    from ..utils.version_check import get_update_message
-
-    update_msg = get_update_message(__version__)
-    if update_msg:
-        click.echo(click.style(update_msg, fg="yellow"))
+    click.echo("Welcome to dbt-colibri for Teradata 🐦")
 
 @cli.command("generate")
 @click.option(
@@ -82,14 +64,14 @@ def cli():
     help="Enable light mode (excludes compiled_code from output for smaller file size)"
 )
 @click.option(
-    "--disable-telemetry",
+    "--enable-telemetry",
     is_flag=True,
     default=False,
-    help="Disable anonymous usage telemetry in the generated HTML report. "
-         "Can also be set via DO_NOT_TRACK=1 or DISABLE_COLIBRI_TELEMETRY=1 environment variables."
+    help="Let the generated HTML report send anonymous usage statistics "
+         "(adapter type, node count) to the upstream colibri project. Off by default."
 )
 
-def generate_report(output_dir, manifest, catalog, debug, light, disable_telemetry):
+def generate_report(output_dir, manifest, catalog, debug, light, enable_telemetry):
     """Generate a dbt-colibri lineage report with both JSON and HTML output."""
     import logging
     from ..utils import log
@@ -101,16 +83,7 @@ def generate_report(output_dir, manifest, catalog, debug, light, disable_telemet
         log_level = logging.DEBUG if debug else logging.INFO
         logger = log.setup_logging(level=log_level)
 
-        # Resolve telemetry opt-out from CLI flag + env vars
-        telemetry_disabled = _is_telemetry_disabled(disable_telemetry)
-
-        if not telemetry_disabled:
-            click.echo(
-                "Colibri collects anonymous usage statistics (adapter type, node count) "
-                "to improve the product.\n"
-                "To disable, use --disable-telemetry, or set DO_NOT_TRACK=1 "
-                "or DISABLE_COLIBRI_TELEMETRY=1.\n"
-            )
+        telemetry_disabled = not _is_telemetry_enabled(enable_telemetry)
 
         if not os.path.exists(manifest):
             logger.error(f"❌ Manifest file not found at {manifest}")

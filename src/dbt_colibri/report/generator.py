@@ -19,7 +19,7 @@ class DbtColibriReportGenerator:
     - Report generation (DbtColibriReportGenerator)
     """
 
-    def __init__(self, extractor: DbtColumnLineageExtractor, light_mode: bool = False, disable_telemetry: bool = False):
+    def __init__(self, extractor: DbtColumnLineageExtractor, light_mode: bool = False, disable_telemetry: bool = True):
         self.extractor = extractor
         self.manifest = extractor.manifest
         self.catalog = extractor.catalog
@@ -470,12 +470,12 @@ class DbtColibriReportGenerator:
             if node.get("nodeType") == "exposure":
                 continue
 
-            if self.dialect == "snowflake":
-                database = (node.get("database") or "unknown").upper()
-                schema = (node.get("schema") or "unknown").upper()
-            else:
-                database = (node.get("database") or "unknown").lower()
-                schema = (node.get("schema") or "unknown").lower()
+            # Teradata has two-level names (database.object). dbt fills
+            # node["database"] with the profile database, which is not part of
+            # the object name, so group everything under a single root and use
+            # the Teradata database (dbt "schema") as the second level.
+            database = "teradata"
+            schema = (node.get("schema") or "unknown").lower()
 
             db_tree.setdefault(database, {}).setdefault(schema, []).append(node["id"])
 
@@ -709,7 +709,7 @@ def inject_data_into_html(
     data: dict,
     template_html_path: str = "dist/index.html",
     output_html_path: Optional[str] = None,
-    disable_telemetry: bool = False,
+    disable_telemetry: bool = True,
 ) -> str:
     """
     Inject JSON data into the compiled HTML file by encoding the dict

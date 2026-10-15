@@ -1,201 +1,49 @@
+# dbt-colibri for Teradata
 
+Column-level lineage report for **dbt-teradata** projects. A Teradata-only fork of [b-ned/dbt-colibri](https://github.com/b-ned/dbt-colibri): it reads `manifest.json` and `catalog.json`, traces every column back to its sources with SQLGlot's Teradata dialect, and writes a standalone HTML dashboard.
 
-
-
-![dbt-colibri header](https://github.com/b-ned/dbt-colibri/blob/d31ece39bacf862e485233aad3e84df9a7618946/static/colibri_header.png)
-
-[![PyPI version](https://badge.fury.io/py/dbt-colibri.svg)](https://badge.fury.io/py/dbt-colibri)
-[![Python Support](https://img.shields.io/pypi/pyversions/dbt-colibri.svg)](https://pypi.org/project/dbt-colibri/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-
-
-
-A lightweight, developer-friendly CLI tool and self-hostable dashboard for extracting and visualizing **column-level lineage** from your dbt projects.
-
-Built for data teams who want transparent, flexible lineage tracking without vendor lock-in or complex enterprise tooling.
-
-
-<div align="center">
-  <img width="800" height="510" alt="colibri-demo-tight" src="https://github.com/user-attachments/assets/a42827a1-cb2f-4522-8cd0-5ba66aa61998" />
-</div>
-
-## Why dbt-colibri?
-
-- **🔍 Complete visibility**: Easy UI, track how every column flows through your dbt transformations
-- **⚡ Fast & lightweight**: Generate reports in seconds from your existing dbt artifacts
-- **🏠 Self-hosted**: No cloud dependencies or external services required
-
-Documentation site: [https://www.docs.colibri-data.com](https://www.docs.colibri-data.com)
-
-## Teradata
-
-This fork adds support for the `dbt-teradata` adapter. Teradata uses two-level names (`database.table`), so lineage is resolved against the `relation_name` that dbt-teradata emits. Teradata-specific SQL (`SEL`, `QUALIFY`, `ZEROIFNULL`, `CAST ... FORMAT`, `TOP`, `SAMPLE`, `LOCKING ROW FOR ACCESS`) is parsed with SQLGlot's Teradata dialect.
+## Install
 
 ```bash
 pip install git+https://github.com/patriciojgf/dbt-colibri-teradata
-dbt compile && dbt docs generate
-colibri generate
 ```
 
-## Quick Start
-
-### Installation
+## Use
 
 ```bash
-# Using uv (recommended)
-uv add dbt-colibri
-
-# Using pip
-pip install dbt-colibri
+dbt compile
+dbt docs generate      # catalog.json is required for column resolution
+colibri generate       # writes dist/index.html and dist/colibri-manifest.json
 ```
 
-### Basic Usage
+Options: `--manifest`, `--catalog`, `--output-dir`, `--light` (drops compiled SQL from the report for very large projects), `--debug`.
 
-1. **Run dbt** to generate the required artifacts:
-   ```bash
-   dbt compile
-   dbt docs generate
-   ```
+## What differs from upstream
 
-2. **Generate lineage report**:
-   ```bash
-   colibri generate
-   ```
+- **Only the `teradata` adapter is accepted.** Any other `adapter_type` in the manifest is rejected.
+- **Two-part names.** Objects resolve as `database.object`, matching the `relation_name` dbt-teradata emits (`"BDW_STG"."CLIENTES"`). The profile database dbt stores in `node.database` is ignored, and the catalog's NULL `database` is handled.
+- **Case-insensitive identifiers.** Teradata compares names case-insensitively even when quoted, so tables, columns and SQL identifiers are all folded to lowercase before matching. `"BDW_STG"."clientes"` in SQL matches `CLIENTES` in the catalog.
+- **Teradata SQL.** `SEL`, `QUALIFY`, `ZEROIFNULL`, `CAST ... FORMAT`, `TOP`, `SAMPLE` and a leading `LOCKING ROW FOR ACCESS` are parsed.
+- **Ephemeral models referenced with an alias** (`JOIN __dbt__cte__x s`) are attributed to the ephemeral model, for both column and join/filter lineage.
+- **No outbound calls by default.** The PyPI version check was removed, and the report's anonymous usage telemetry is off unless you pass `--enable-telemetry`.
+- The report tree groups objects as `teradata › <database> › <object>`.
 
-3. **View results**: Open `dist/index.html` in your browser
+Tables referenced in SQL that are not dbt models or sources show up as `_HARDCODED_REF___<database>.<table>`.
 
-That's it! Your column lineage dashboard is ready. Note you can also use dbt run/build, to generate the `manifest.json`.
+## Limitations
 
-## Documentation
+- Teradata OTF (three-part `datalake.db.table`) relations are not supported for column resolution.
+- Python models are skipped.
 
-### CLI Commands
-
-#### `colibri generate`
-
-Generates column lineage reports from your dbt project.
+## Development
 
 ```bash
-colibri generate [OPTIONS]
-```
-
-**Options:**
-- `--manifest`: Path to dbt manifest.json (default: `target/manifest.json`)
-- `--catalog`: Path to dbt catalog.json (default: `target/catalog.json`)
-- `--output-dir`: Output directory (default: `dist/`)
-- `--help`: Show help message
-- `--light`: For very big dbt projects, excludes attributes like compiled SQL and returns smaller HTML file.
-
-### Output Files
-
-- **`colibri-manifest.json`**: Lineage data
-- **`index.html`**: Interactive (standalone) visualization dashboard
-
-
-### Project Structure
-
-``` 
-your-dbt-project/
-├── target/
-│   ├── manifest.json    # Generated by dbt
-│   └── catalog.json     # Generated by dbt docs generate
-└── dist/                # Generated by colibri
-    ├── index.html       # Interactive dashboard
-    └── colibri-manifest.json
-```
-
-## Advanced Usage
-
-### CI/CD Integration
-
-The easiest way to deploy your static html is through github/gitlab pages (if you are on enterprise license you can do this privately)
-
-You can find the full example workflow at [`docs/github_pages_example.yml`](docs/github_pages_example.yml).
-
-#### General idea
-1. After every change to the production dbt code (push the `main` branch), GitHub Actions will:
-   - Set up Python and install dependencies with `uv`.
-   - Compile and generate docs needed for colibri.
-   - Run `colibri generate` to build the static HTML report in the `dist/` folder.
-2. The `dist/` folder is uploaded as an artifact and deployed natively to GitHub Pages using the official `actions/deploy-pages` action.
-3. The result is available at your repository’s Pages URL.
-
-Gitlab has similar functionality. Other options are writing the file to a bucket and mount it into a web server container (nginx).
-
-## Technical Details
-
-### Requirements
-
-- **Python**: tested on versions 3.9, 3.11, 3.13
-
-- **Supported dbt Adapters**: 
-   - Snowflake, 
-   - BigQuery, 
-   - Redshift, 
-   - duckDB, 
-   - Postgres
-   - Vertica (**not fully supported: SQLGlot has no Vertica dialect, so Colibri falls back to PostgreSQL parsing and lineage may be incomplete or incorrect**)
-   - Databricks (**limited to SQL models**)
-   - Athena
-   - Trino
-   - SQL Server (TSQL)
-   - ClickHouse
-   - Oracle
-   - StarRocks
-
-### dbt Compatibility
-
-| dbt-core Version | Status |
-|------------------|--------|
-| 1.8.x           | ✅ Tested |
-| 1.9.x           | ✅ Tested |
-| 1.10.x          | ✅ Tested |
-| 1.11.x          | ✅ Tested |
-| 1.12.x          | ✅ Tested |
-| 2.0 (Fusion)    | ✅ Tested (preview; generate `catalog.json` with `dbt compile --write-catalog`) |
-
-### Architecture
-
-dbt-colibri leverages:
-- **SQLGlot** for SQL parsing and column lineage extraction
-- **dbt artifacts** (manifest.json, catalog.json) for metadata
-- **Static HTML/JS** for zero-dependency dashboard deployment
-
-## Contributing
-
-We welcome contributions! Raise an issue or request a feature, if you are open to contribute you can let us now in the issue.
-
-- **Issues**: [GitHub Issues](https://github.com/b-ned/dbt-colibri/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/b-ned/dbt-colibri/discussions)
-
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/dbt-colibri.git
-cd dbt-colibri
-
-# Install development dependencies
 uv sync --dev
-
-# Run tests
-pytest
-
-# Format code
-ruff format
+uv run pytest
 ```
+
+Tests use synthetic artifacts shaped like real dbt-teradata output (`tests/teradata_fixtures.py`).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-This project builds upon excellent open source work:
-
-- **[dbt-column-lineage-extractor](https://github.com/canva-public/dbt-column-lineage-extractor)** - Original column lineage extraction logic
-- **[SQLGlot](https://github.com/tobymao/sqlglot)** - SQL parsing and transformation
-- **[elementary-data](https://github.com/elementary-data/elementary)** - Inspiration for static HTML report structure
-
----
+MIT, see [LICENSE](LICENSE). Based on [dbt-colibri](https://github.com/b-ned/dbt-colibri) by bned, which builds on [dbt-column-lineage-extractor](https://github.com/canva-public/dbt-column-lineage-extractor) and [SQLGlot](https://github.com/tobymao/sqlglot).

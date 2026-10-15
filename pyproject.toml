@@ -1,9 +1,10 @@
 [project]
-name = "dbt-colibri"
-version = "0.3.6"
-description = "A column lineage parser and dashboarding tool"
+name = "dbt-colibri-teradata"
+version = "0.3.6+td.1"
+description = "Column lineage parser and dashboard for dbt-teradata projects (fork of dbt-colibri)"
 authors = [
-    { name="bned" }
+    { name="bned" },
+    { name="Patricio García Farrell" }
 ]
 license = { text = "MIT" }
 readme = "README.md"
@@ -57,3 +58,5 @@ name = "testpypi"
 url = "https://test.pypi.org/simple/"
 publish-url = "https://test.pypi.org/legacy/"
 explicit = true
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
