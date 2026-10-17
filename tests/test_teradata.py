@@ -200,3 +200,30 @@ def test_cli_enable_telemetry_flag(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "<script>window.colibriTelemetry = false;</script>" not in (out / "index.html").read_text()
+
+
+def test_report_tree_files_external_tables_under_their_database():
+    report = DbtColibriReportGenerator(_extractor()).build_full_lineage()
+    tree = json.dumps(report["tree"])
+    assert "bdw_ref" in tree
+    assert '"unknown"' not in tree
+
+
+def test_demo_project_generates_clean_lineage():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "docs" / "demo" / "build_demo.py"
+    spec = importlib.util.spec_from_file_location("build_demo", path)
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+
+    manifest, catalog = demo.build()
+    result = _extractor(manifest, catalog).extract_project_lineage()
+    assert result["errors"] == []
+    parents = result["lineage"]["parents"]["model.gold_banco.fct_movimientos"]
+    assert {(e["dbt_node"], e["column"]) for e in parents["importe_ars"]} == {
+        ("source.gold_banco.stg.movimientos", "importe"),
+        ("source.gold_banco.stg.movimientos", "tipo_mov_cd"),
+        ("_HARDCODED_REF___bdw_ref.tipo_cambio", "cotizacion"),
+    }

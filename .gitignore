@@ -157,3 +157,5 @@ dev_data/
 main.py
 output/
 .vscode/settings.json
+docs/demo/target/
+docs/demo/dist/

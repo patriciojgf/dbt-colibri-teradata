@@ -140,8 +140,14 @@ class DbtColibriReportGenerator:
 
         if not node_data:
             node_type = "unknown"
+            schema = None
             if node_id.startswith("_HARDCODED_REF___"):
                 node_type = "hardcoded"
+                # "_HARDCODED_REF___bdw_ref.tipo_cambio" -> Teradata database "bdw_ref",
+                # so the report tree files it under its database instead of "unknown".
+                relation = node_id[len("_HARDCODED_REF___"):]
+                if "." in relation:
+                    schema = relation.rsplit(".", 1)[0]
             elif node_id.startswith("_NOT_FOUND___."):
                 node_type = "not_found"
             return {
@@ -149,7 +155,7 @@ class DbtColibriReportGenerator:
                 "materialized": None,
                 "rawCode": None,
                 "compiledCode": None,
-                "schema": None,
+                "schema": schema,
                 "description": None,
                 "path": None,
                 "contractEnforced": None,
