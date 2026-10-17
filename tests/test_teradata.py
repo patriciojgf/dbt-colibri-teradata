@@ -227,3 +227,21 @@ def test_demo_project_generates_clean_lineage():
         ("source.gold_banco.stg.movimientos", "tipo_mov_cd"),
         ("_HARDCODED_REF___bdw_ref.tipo_cambio", "cotizacion"),
     }
+
+
+def test_report_hides_cloud_upsell_features(tmp_path):
+    manifest, catalog = build_artifacts()
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    (tmp_path / "catalog.json").write_text(json.dumps(catalog))
+    out = tmp_path / "dist"
+    result = CliRunner().invoke(cli, [
+        "generate",
+        "--manifest", str(tmp_path / "manifest.json"),
+        "--catalog", str(tmp_path / "catalog.json"),
+        "--output-dir", str(out),
+    ])
+    assert result.exit_code == 0, result.output
+    head = (out / "index.html").read_text().split("</head>")[0]
+    assert 'id="colibri-teradata-hide-cloud"' in head
+    for feature in ("saved_views", "git_blame"):
+        assert f'utm_content={feature}' in head

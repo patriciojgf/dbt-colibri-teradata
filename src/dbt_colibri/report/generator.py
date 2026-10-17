@@ -711,6 +711,21 @@ class DbtColibriReportGenerator:
 
 
 
+# The bundled UI advertises features of the commercial Colibri Cloud product
+# (ERD, Saved Views, Git Blame). They only link to colibri-data.com and do
+# nothing in this report, so hide them. Each one is an <a> whose href carries
+# utm_source=colibri_oss; the logo link uses the same tag but is attribution,
+# not a feature, so it stays.
+_HIDE_CLOUD_FEATURES_CSS = (
+    "<style id=\"colibri-teradata-hide-cloud\">"
+    'a[href*="utm_source=colibri_oss"]:not([href*="utm_content=logo"]),'
+    ':has(> a[href*="utm_content=saved_views"]),'
+    ':has(> a[href*="utm_content=git_blame"])'
+    "{display:none!important}"
+    "</style>"
+)
+
+
 def inject_data_into_html(
     data: dict,
     template_html_path: str = "dist/index.html",
@@ -749,6 +764,7 @@ def inject_data_into_html(
 
     with open(output_html_path, "w", encoding="utf-8") as out_f:
         out_f.write(template_html[:insert_at])
+        out_f.write(_HIDE_CLOUD_FEATURES_CSS)
         # Inject telemetry opt-out flag before data so it's set when the app boots
         if disable_telemetry:
             out_f.write("<script>window.colibriTelemetry = false;</script>")

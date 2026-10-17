@@ -135,6 +135,8 @@ colibri generate --manifest target/manifest.json --catalog target/catalog.json -
 | `--debug` | apagado | Logging detallado |
 | `--enable-telemetry` | apagado | Ver abajo |
 
+Todo lo que muestra el reporte es gratuito: los botones de funciones pagas del proyecto original vienen ocultos.
+
 Por defecto **no hace ninguna llamada a internet**: no consulta PyPI y el reporte no envía telemetría. Si querés mandarle estadísticas anónimas al proyecto original, agregá `--enable-telemetry`.
 
 ## Publicarlo en cada deploy
@@ -177,6 +179,7 @@ colibri generate --manifest docs/demo/target/manifest.json \
 - Atribuye bien los ephemeral referenciados con alias, también en joins y filtros.
 - Agrupa las tablas externas bajo su base de datos en el árbol.
 - Sin chequeo de versión contra PyPI y con telemetría apagada por defecto.
+- Oculta los botones de funciones pagas de Colibri Cloud (ERD, Saved Views, Git Blame), que en el original solo llevan a su página comercial.
 
 ## Limitaciones
 
