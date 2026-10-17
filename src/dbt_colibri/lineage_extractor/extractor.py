@@ -3,7 +3,7 @@ from sqlglot.lineage import SqlglotError, exp
 from sqlglot.schema import ensure_schema
 import logging
 from ..utils import json_utils, parsing_utils
-from .lineage import lineage, prepare_scope, extract_structural_lineage
+from .lineage import EPHEMERAL_STUB_MARK, lineage, prepare_scope, extract_structural_lineage
 from importlib.metadata import version, PackageNotFoundError
 import gc
 
@@ -538,10 +538,13 @@ class DbtColumnLineageExtractor:
             columns = self._resolve_ephemeral_columns(node_id)
             if not columns:
                 continue
-            projections = [
-                exp.alias_(exp.Null(), col_name, quoted=False)
-                for col_name in columns
-            ]
+            projections = []
+            for col_name in columns:
+                # Marked so lineage classifies the stub as transparent instead
+                # of "transformation" (see classify_column_lineage).
+                stub_value = exp.Null()
+                stub_value.add_comments([EPHEMERAL_STUB_MARK])
+                projections.append(exp.alias_(stub_value, col_name, quoted=False))
             stub = exp.Select(expressions=projections)
             cte.set("this", stub)
             changed = True

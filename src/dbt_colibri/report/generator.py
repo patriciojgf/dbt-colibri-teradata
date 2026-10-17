@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 
 from ..lineage_extractor.extractor import DbtColumnLineageExtractor
+from ..relationships import extract_relationships
 
 import base64
 
@@ -674,6 +675,21 @@ class DbtColibriReportGenerator:
                 json.dump(parsing_errors, f, indent=2)
             self.logger.info(f"Wrote {len(parsing_errors)} parsing errors to {errors_path}")
 
+        # Relationships between tables (dbt relationships tests + JOINs).
+        # A failure here must never cost the user the lineage report.
+        try:
+            relationships = extract_relationships(self.extractor, lineage["lineage"]["parents"])
+        except Exception as e:
+            self.logger.warning(f"Could not extract relationships: {e}")
+            relationships = {"nodes": {}, "relationships": []}
+        lineage["relationships"] = relationships["relationships"]
+        write_relationships_html(
+            relationships,
+            project=lineage["metadata"].get("dbt_project_name") or "",
+            output_html_path=str(target_path / "relaciones.html"),
+        )
+        self.logger.info(f"Found {len(relationships['relationships'])} relationships")
+
         # Save full JSON data (with parents and children)
         json_path = target_path / "colibri-manifest.json"
         with open(json_path, "w", encoding="utf-8") as f:
@@ -726,6 +742,47 @@ _HIDE_CLOUD_FEATURES_CSS = (
 )
 
 
+# Adds a "Relaciones" tab next to Model Info / Lineage that opens
+# relaciones.html. The UI is a compiled React bundle, so the tab is inserted
+# into its DOM (where the hidden ERD upsell link sits) and re-inserted if React
+# re-renders the tab bar. It reuses the bundle's own Tailwind classes so it
+# looks like the other tabs in light and dark mode.
+_RELATIONSHIPS_TAB_SCRIPT = """<script id="colibri-teradata-relationships-tab">
+(function () {
+  var CLS = "flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-accent/50";
+  var ICON = '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="8" height="7" rx="1"/><rect x="14" y="14" width="8" height="7" rx="1"/><path d="M10 6.5h3a2 2 0 0 1 2 2V14"/></svg>';
+  function place() {
+    var anchor = document.querySelector('a[href*="utm_content=erd"]');
+    if (!anchor) {
+      var buttons = document.querySelectorAll("button");
+      for (var i = 0; i < buttons.length; i++) if (buttons[i].textContent.trim() === "Lineage") { anchor = buttons[i]; break; }
+    }
+    if (!anchor || !anchor.parentNode) return;
+    if (anchor.parentNode.querySelector("[data-colibri-relaciones]")) return;
+    var tab = document.createElement("a");
+    tab.href = "relaciones.html";
+    tab.className = CLS;
+    tab.setAttribute("data-colibri-relaciones", "");
+    tab.innerHTML = ICON + "Relaciones";
+    anchor.parentNode.insertBefore(tab, anchor.nextSibling);
+  }
+  new MutationObserver(place).observe(document.documentElement, { childList: true, subtree: true });
+  document.addEventListener("DOMContentLoaded", place);
+})();
+</script>"""
+
+
+def write_relationships_html(relationships: dict, project: str, output_html_path: str) -> str:
+    """Write relaciones.html with the relationships embedded as JSON."""
+    template = (Path(__file__).parent / "relaciones.html").read_text(encoding="utf-8")
+    payload = json.dumps({**relationships, "project": project}, ensure_ascii=False, separators=(",", ":"))
+    # Keep the JSON inert inside <script type="application/json">.
+    payload = payload.replace("</", "<\\/").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    html = template.replace("/*__COLIBRI_RELATIONSHIPS__*/", payload, 1)
+    Path(output_html_path).write_text(html, encoding="utf-8")
+    return output_html_path
+
+
 def inject_data_into_html(
     data: dict,
     template_html_path: str = "dist/index.html",
@@ -765,6 +822,7 @@ def inject_data_into_html(
     with open(output_html_path, "w", encoding="utf-8") as out_f:
         out_f.write(template_html[:insert_at])
         out_f.write(_HIDE_CLOUD_FEATURES_CSS)
+        out_f.write(_RELATIONSHIPS_TAB_SCRIPT)
         # Inject telemetry opt-out flag before data so it's set when the app boots
         if disable_telemetry:
             out_f.write("<script>window.colibriTelemetry = false;</script>")

@@ -88,14 +88,15 @@ FROM "BDW_STG"."SUCURSALES" s""",
     c.Cuit AS cuit,
     CASE c.Segmento_Cd WHEN 'PYM' THEN 'PYME' WHEN 'IND' THEN 'Individuos' ELSE 'Otros' END AS segmento,
     CAST(c.Fecha_Alta AS DATE FORMAT 'YYYY-MM-DD') AS fecha_alta,
+    c.Sucursal_Id AS sucursal_sk,
     s.sucursal AS sucursal_radicacion,
     s.zona AS zona
 FROM "BDW_STG"."CLIENTES" c
 LEFT JOIN "BDW_GOLD"."dim_sucursal" s ON c.Sucursal_Id = s.sucursal_sk""",
         columns=[("cliente_sk", "INTEGER", "Clave del cliente"), ("nombre", "VARCHAR(100)", ""),
                  ("cuit", "CHAR(11)", ""), ("segmento", "VARCHAR(10)", "Segmento comercial"),
-                 ("fecha_alta", "DATE", ""), ("sucursal_radicacion", "VARCHAR(60)", ""),
-                 ("zona", "VARCHAR(30)", "")],
+                 ("fecha_alta", "DATE", ""), ("sucursal_sk", "SMALLINT", "Sucursal de radicación"),
+                 ("sucursal_radicacion", "VARCHAR(60)", ""), ("zona", "VARCHAR(30)", "")],
     ),
     "dim_cuenta": dict(
         deps=[mdl("stg_cuentas_activas")],
@@ -170,6 +171,20 @@ def _manifest_col(name, desc=""):
     return {"name": name, "description": desc, "data_type": None, "tags": [], "meta": {}}
 
 
+def _test(uid, name, attached, column, deps, kwargs):
+    return {
+        "resource_type": "test", "unique_id": uid, "package_name": PROJECT,
+        "name": uid.split(".")[-1], "path": f"{uid.split('.')[-1]}.sql",
+        "original_file_path": "models/marts/_marts.yml", "database": PROFILE_DB,
+        "schema": "BDW_GOLD_dbt_test__audit", "fqn": [PROJECT, uid.split(".")[-1]],
+        "column_name": column, "attached_node": attached,
+        "test_metadata": {"name": name, "kwargs": kwargs, "namespace": None},
+        "depends_on": {"nodes": deps, "macros": [f"macro.dbt.test_{name}"]},
+        "config": {"enabled": True, "severity": "ERROR", "materialized": "test"},
+        "raw_code": "", "compiled_code": "", "tags": [], "meta": {}, "description": "",
+    }
+
+
 def _catalog(uid, schema, name, cols, kind="table"):
     return {
         "metadata": {"type": kind, "schema": schema, "name": name, "database": None,
@@ -208,6 +223,7 @@ def build():
             "resource_type": "model", "unique_id": uid, "package_name": PROJECT,
             "name": name, "alias": name, "database": PROFILE_DB, "schema": "BDW_GOLD",
             "path": f"{layer}/{name}.sql", "original_file_path": f"models/{layer}/{name}.sql",
+            "patch_path": f"{PROJECT}://models/{layer}/_{layer}.yml",
             "fqn": [PROJECT, layer, name],
             "raw_code": spec["sql"], "compiled_code": spec["sql"],
             "config": {"materialized": mat, "enabled": True},
@@ -220,6 +236,19 @@ def build():
             node["relation_name"] = f'"BDW_GOLD"."{name}"'
             cat_nodes[uid] = _catalog(uid, "BDW_GOLD", name, [(c[0], c[1]) for c in cols])
         nodes[uid] = node
+
+    # dbt tests: keys of each dimension and the fact, plus one declared
+    # relationship. The others are left for colibri to infer from the JOINs.
+    for model, column in [("dim_cliente", "cliente_sk"), ("dim_cuenta", "cuenta_sk"),
+                          ("dim_sucursal", "sucursal_sk"), ("fct_movimientos", "movimiento_id")]:
+        tid = f"test.{PROJECT}.unique_{model}_{column}"
+        nodes[tid] = _test(tid, "unique", mdl(model), column, [mdl(model)],
+                           {"column_name": column, "model": f"{{{{ get_where_subquery(ref('{model}')) }}}}"})
+    tid = f"test.{PROJECT}.relationships_fct_movimientos_cuenta_sk__cuenta_sk__ref_dim_cuenta_"
+    nodes[tid] = _test(tid, "relationships", mdl("fct_movimientos"), "cuenta_sk",
+                       [mdl("dim_cuenta"), mdl("fct_movimientos")],
+                       {"column_name": "cuenta_sk", "to": "ref('dim_cuenta')", "field": "cuenta_sk",
+                        "model": "{{ get_where_subquery(ref('fct_movimientos')) }}"})
 
     parent_map, child_map = {}, {}
     for uid, n in {**nodes, **sources}.items():

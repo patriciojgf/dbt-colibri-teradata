@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relaciones · Colibri</title>
+<style>
+:root{
+  --bg:#ffffff;--fg:#0f172a;--muted:#64748b;--faint:#94a3b8;--line:#e2e8f0;--panel:#f8fafc;--hover:#f1f5f9;
+  --blue:#2563eb;--blue-soft:#dbeafe;--model-bg:#eff6ff;--model-bd:#bfdbfe;--src-bg:#fff7ed;--src-bd:#fed7aa;
+  --ext-bg:#f8fafc;--ext-bd:#94a3b8;--eph-bg:#f8fafc;--eph-bd:#cbd5e1;--wire:#64748b;
+  --pk-bg:#fef3c7;--pk-fg:#92400e;--fk-bg:#dbeafe;--fk-fg:#1e40af;
+  --ok-bg:#dcfce7;--ok-fg:#166534;--warn-bg:#fffbeb;--warn-bd:#fde68a;--warn-fg:#78350f;--inf-bg:#fef3c7;--inf-fg:#92400e;
+  --code-kw:#a21caf;--code-hl:#fef08a;--dot:#e2e8f0;
+}
+:root.dark{
+  --bg:#0b1120;--fg:#e2e8f0;--muted:#94a3b8;--faint:#64748b;--line:#1e293b;--panel:#111827;--hover:#1e293b;
+  --blue:#60a5fa;--blue-soft:#1e3a5f;--model-bg:#0f1d33;--model-bd:#1e3a8a;--src-bg:#2a1a0b;--src-bd:#9a3412;
+  --ext-bg:#111827;--ext-bd:#475569;--eph-bg:#111827;--eph-bd:#334155;--wire:#94a3b8;
+  --pk-bg:#422006;--pk-fg:#fcd34d;--fk-bg:#1e3a5f;--fk-fg:#bfdbfe;
+  --ok-bg:#052e16;--ok-fg:#86efac;--warn-bg:#2a1f05;--warn-bd:#78350f;--warn-fg:#fde68a;--inf-bg:#2a1f05;--inf-fg:#fcd34d;
+  --code-kw:#e879f9;--code-hl:#713f12;--dot:#1e293b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+button{font:inherit;color:inherit}
+code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+header{height:39px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:0 16px}
+header .brand{display:flex;align-items:center;gap:8px;font-weight:600}
+header .crumb{color:var(--faint)}
+.tabs{height:37px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:0 8px}
+.tab{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;color:var(--muted);text-decoration:none;font-weight:500;font-size:12px}
+.tab:hover{background:var(--hover);color:var(--fg)}
+.tab.active{background:var(--hover);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.tab svg{width:16px;height:16px}
+
+main{display:grid;grid-template-columns:260px 1fr 380px;height:calc(100% - 76px)}
+main.no-panel{grid-template-columns:260px 1fr 0}
+aside{overflow:auto}
+aside.left{border-right:1px solid var(--line);padding:12px}
+aside.right{border-left:1px solid var(--line);padding:18px}
+main.no-panel aside.right{display:none}
+
+h4{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 4px 8px;font-weight:600}
+h4:first-child{margin-top:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 6px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted);cursor:pointer}
+.chip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.search{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:6px;padding:6px 9px;font-size:12.5px;margin:4px 0 2px}
+.item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:1px}
+.item:hover{background:var(--hover)}
+.item.sel{background:var(--blue-soft);box-shadow:inset 3px 0 0 var(--blue)}
+.item .t{font-size:12.5px;word-break:break-word}
+.item .s{font-size:11.5px;color:var(--muted);word-break:break-word}
+.badge{display:inline-block;font-size:10px;font-weight:600;border-radius:4px;padding:0 5px;margin-left:4px;vertical-align:1px}
+.b-decl{background:var(--ok-bg);color:var(--ok-fg)}
+.b-inf{background:var(--inf-bg);color:var(--inf-fg)}
+.b-ext{background:var(--hover);color:var(--muted)}
+.empty-list{color:var(--faint);font-size:12px;padding:4px 8px}
+
+#viewport{position:relative;overflow:hidden;cursor:grab;background-color:var(--bg);background-image:radial-gradient(var(--dot) 1px,transparent 1px);background-size:18px 18px}
+#viewport.panning{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#wires path.hit{pointer-events:stroke;cursor:pointer}
+.card{position:absolute;width:250px;background:var(--model-bg);border:1.5px solid var(--model-bd);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:default;user-select:none}
+.card.source{background:var(--src-bg);border-color:var(--src-bd)}
+.card.external{background:var(--ext-bg);border-color:var(--ext-bd);border-style:dashed}
+.card.ephemeral{background:var(--eph-bg);border-color:var(--eph-bd)}
+.card.focus{border-color:var(--blue);border-width:2px}
+.card.dim{opacity:.35}
+.card .hd{display:flex;align-items:baseline;gap:8px;padding:9px 12px 7px;border-bottom:1px solid var(--line);cursor:move}
+.card .hd .nm{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .hd .sc{margin-left:auto;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.card .row{display:flex;align-items:center;gap:7px;height:26px;padding:0 12px;font-size:12.5px}
+.card .row .k{width:22px;flex:none;text-align:center;font-size:9.5px;font-weight:700;border-radius:4px}
+.k.pk{background:var(--pk-bg);color:var(--pk-fg)}.k.fk{background:var(--fk-bg);color:var(--fk-fg)}
+.card .row .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .row .ty{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap}
+.card .row.hl{background:var(--blue-soft);font-weight:600}
+.card .more{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--faint);font-size:11px;padding:3px 12px 8px;cursor:pointer}
+.card .more:hover{color:var(--blue)}
+.card .kind{font-size:10px;color:var(--muted);padding:0 12px 6px;margin-top:-2px}
+
+.controls{position:absolute;left:12px;bottom:12px;display:flex;flex-direction:column;gap:4px;z-index:5}
+.controls button{width:30px;height:30px;border:1px solid var(--line);background:var(--bg);border-radius:6px;cursor:pointer;font-size:15px;line-height:1}
+.controls button:hover{background:var(--hover)}
+.legend{position:absolute;right:12px;bottom:12px;z-index:5;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:11.5px;color:var(--muted);line-height:1.9}
+.legend svg{vertical-align:middle;margin-right:6px}
+.notice{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:5;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--muted);box-shadow:0 1px 3px rgba(0,0,0,.06);white-space:nowrap}
+.notice button{border:0;background:transparent;color:var(--blue);cursor:pointer;padding:0 0 0 6px;font-weight:600}
+.blank{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:40px;text-align:center;color:var(--muted)}
+.blank div{max-width:460px}
+.blank b{color:var(--fg);display:block;font-size:15px;margin-bottom:6px}
+
+.eyebrow{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.ptitle{font-size:15px;font-weight:600;margin:3px 0 10px;word-break:break-word}
+.ptitle .ar{color:var(--muted);font-weight:400}
+.kv{display:grid;grid-template-columns:105px 1fr;gap:6px 10px;font-size:12.5px;margin-bottom:6px}
+.kv .k2{color:var(--muted)}
+.box{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:10px 12px;margin-bottom:8px}
+.box .cap{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:11.5px;margin-bottom:6px}
+.box .cap .cp{margin-left:auto;border:0;background:transparent;color:var(--blue);cursor:pointer;font-size:11.5px;padding:0}
+.box pre{margin:0;font-size:11.5px;line-height:1.55;white-space:pre;overflow:auto}
+.box p{margin:0;font-size:12.5px}
+.kw{color:var(--code-kw)}.hlc{background:var(--code-hl);border-radius:2px}
+.warn{display:flex;gap:8px;background:var(--warn-bg);border:1px solid var(--warn-bd);color:var(--warn-fg);border-radius:8px;padding:9px 11px;font-size:12px;margin-bottom:8px}
+.plist .item .s{font-size:11px}
+.lnk{border:0;background:transparent;color:var(--blue);cursor:pointer;padding:0;font:inherit}
+.muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12c4 0 6-2 8-6 1 3 3 4 6 4l4-1-3 3c0 4-3 7-8 7-3 0-5-1-6-3"/><circle cx="16.5" cy="8.5" r=".6" fill="currentColor"/></svg>
+    Colibri
+  </span>
+  <span class="crumb">/</span><span id="project"></span>
+</header>
+<nav class="tabs">
+  <a class="tab" href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>Model Info</a>
+  <a class="tab" href="index.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M6 9v3a3 3 0 0 0 3 3h6"/></svg>Lineage</a>
+  <a class="tab active" href="relaciones.html" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="8" height="7" rx="1"/><rect x="14" y="14" width="8" height="7" rx="1"/><path d="M10 6.5h3a2 2 0 0 1 2 2V14"/></svg>Relaciones</a>
+</nav>
+<main id="main">
+  <aside class="left">
+    <h4>Mostrar</h4>
+    <div class="chips" id="scope"></div>
+    <div class="chips" id="origin"></div>
+    <input class="search" id="q" type="search" placeholder="Buscar tabla o columna…" autocomplete="off">
+    <h4 id="relsTitle">Relaciones</h4>
+    <div id="rels"></div>
+    <h4 id="tablesTitle">Tablas</h4>
+    <div id="tables"></div>
+  </aside>
+  <section id="viewport">
+    <div id="world"><svg id="wires"></svg></div>
+    <div class="controls">
+      <button id="zin" title="Acercar" aria-label="Acercar">+</button>
+      <button id="zout" title="Alejar" aria-label="Alejar">−</button>
+      <button id="zfit" title="Ajustar a la pantalla" aria-label="Ajustar a la pantalla">⤢</button>
+    </div>
+    <div class="legend" id="legend">
+      <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="1.6"/></svg>declarada con test <code>relationships</code></div>
+      <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="1.6" stroke-dasharray="6 5"/></svg>inferida del SQL (JOIN)</div>
+      <div><svg width="40" height="14"><path d="M0 7H40M11 1 1 7l10 6M33 1v12" stroke="currentColor" fill="none" stroke-width="1.4"/></svg>N : 1 (la pata de gallo es el lado N)</div>
+    </div>
+  </section>
+  <aside class="right" id="panel"></aside>
+</main>
+
+<script id="colibri-relationships-data" type="application/json">/*__COLIBRI_RELATIONSHIPS__*/</script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- data ----------
+  var raw = document.getElementById("colibri-relationships-data").textContent;
+  var DATA;
+  try { DATA = JSON.parse(raw); } catch (e) { DATA = { nodes: {}, relationships: [], project: "" }; }
+  var NODES = DATA.nodes || {};
+  var RELS = DATA.relationships || [];
+  document.getElementById("project").textContent = DATA.project || "";
+
+  // ---------- theme (follows the main report's choice) ----------
+  try {
+    var pref = localStorage.getItem("vite-ui-theme");
+    var dark = pref === "dark" || ((!pref || pref === "system") && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+    if (dark) document.documentElement.classList.add("dark");
+  } catch (e) { /* storage may be unavailable */ }
+
+  // ---------- helpers ----------
+  function h(tag, attrs, kids) {
+    var el = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "class") el.className = attrs[k];
+      else if (k === "text") el.textContent = attrs[k];
+      else if (k.slice(0, 2) === "on") el.addEventListener(k.slice(2), attrs[k]);
+      else el.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c != null) el.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return el;
+  }
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (var k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+  function nodeName(id) { return (NODES[id] && NODES[id].name) || id.split(".").pop(); }
+  function ep(e) { return nodeName(e.node) + "." + e.column; }
+  function isKey(nodeId, col) {
+    var n = NODES[nodeId]; if (!n) return false;
+    for (var i = 0; i < n.columns.length; i++) if (n.columns[i].name === col) return n.columns[i].key;
+    return false;
+  }
+  function isModelScope(id) { var n = NODES[id]; return n && (n.kind === "model" || n.kind === "snapshot" || n.kind === "external"); }
+
+  // ---------- state ----------
+  var S = {
+    scope: "models", declared: true, inferred: true, q: "",
+    sel: null,          // selected relationship id
+    focus: null,        // focused table id (neighborhood view)
+    expanded: {},       // card id -> show all columns
+    pos: {},            // card id -> {x,y} user-dragged positions
+    view: { x: 0, y: 0, k: 1 }
+  };
+  var MAX_ALL = 40;     // above this, start in a focused neighbourhood
+
+  function visibleRels() {
+    var q = S.q.trim().toLowerCase();
+    return RELS.filter(function (r) {
+      if (S.scope === "models" && !(isModelScope(r.from.node) && isModelScope(r.to.node))) return false;
+      if (!((S.declared && r.declared) || (S.inferred && !r.declared))) return false;
+      if (q && (ep(r.from) + " " + ep(r.to)).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  function graphRels(rels) {
+    if (!S.focus) return rels;
+    return rels.filter(function (r) { return r.from.node === S.focus || r.to.node === S.focus; });
+  }
+
+  // ---------- layout: layered, N side on the left, key side on the right ----------
+  var CARD_W = 250, ROW_H = 26, HEAD_H = 40, FOOT_H = 24, COL_GAP = 140, ROW_GAP = 34;
+
+  function cardRows(id, rels) {
+    var n = NODES[id]; if (!n) return [];
+    if (S.expanded[id]) return n.columns.map(function (c) { return c.name; });
+    var used = {};
+    rels.forEach(function (r) {
+      if (r.from.node === id) used[r.from.column] = 1;
+      if (r.to.node === id) used[r.to.column] = 1;
+    });
+    n.columns.forEach(function (c) { if (c.key) used[c.name] = 1; });
+    var order = n.columns.map(function (c) { return c.name; }).filter(function (c) { return used[c]; });
+    Object.keys(used).forEach(function (c) { if (order.indexOf(c) < 0) order.push(c); }); // externals have no catalog
+    return order;
+  }
+  function cardHeight(id, rels) {
+    var n = NODES[id], rows = cardRows(id, rels).length;
+    var hidden = n ? n.columns.length - rows : 0;
+    return HEAD_H + rows * ROW_H + (hidden > 0 || S.expanded[id] ? FOOT_H : 8) + (n && n.kind !== "model" ? 16 : 0);
+  }
+
+  function layout(ids, rels) {
+    var out = {}, inn = {};
+    ids.forEach(function (id) { out[id] = []; inn[id] = []; });
+    rels.forEach(function (r) {
+      if (r.direction === "unknown" || r.from.node === r.to.node) return;
+      out[r.from.node].push(r.to.node); inn[r.to.node].push(r.from.node);
+    });
+    var layer = {}, visiting = {};
+    function depth(id) {           // longest path to a sink (key side)
+      if (layer[id] != null) return layer[id];
+      if (visiting[id]) return 0;
+      visiting[id] = 1;
+      var d = 0; out[id].forEach(function (t) { d = Math.max(d, depth(t) + 1); });
+      visiting[id] = 0;
+      return (layer[id] = d);
+    }
+    ids.forEach(depth);
+    var maxL = 0; ids.forEach(function (id) { maxL = Math.max(maxL, layer[id]); });
+    var cols = []; for (var i = 0; i <= maxL; i++) cols.push([]);
+    ids.forEach(function (id) { cols[maxL - layer[id]].push(id); });   // N side left, keys right
+    cols.forEach(function (c) { c.sort(function (a, b) { return (out[b].length + inn[b].length) - (out[a].length + inn[a].length) || nodeName(a).localeCompare(nodeName(b)); }); });
+    // barycentre passes to reduce crossings
+    var idx = {};
+    function index() { cols.forEach(function (c) { c.forEach(function (id, i) { idx[id] = i; }); }); }
+    index();
+    for (var pass = 0; pass < 4; pass++) {
+      cols.forEach(function (c) {
+        c.sort(function (a, b) {
+          function bc(id) { var nb = out[id].concat(inn[id]); if (!nb.length) return idx[id]; var s = 0; nb.forEach(function (x) { s += idx[x]; }); return s / nb.length; }
+          return bc(a) - bc(b);
+        });
+      });
+      index();
+    }
+    // Wrap very tall layers into several columns so the diagram keeps a usable shape.
+    var maxPer = Math.max(4, Math.ceil(Math.sqrt(ids.length) * 1.3));
+    var wrapped = [];
+    cols.forEach(function (c) { for (var i = 0; i < c.length; i += maxPer) wrapped.push(c.slice(i, i + maxPer)); if (!c.length) wrapped.push([]); });
+    cols = wrapped;
+    var heights = cols.map(function (c) { return c.reduce(function (s, id) { return s + cardHeight(id, rels) + ROW_GAP; }, -ROW_GAP); });
+    var tallest = Math.max.apply(null, heights.concat([0]));
+    var pos = {};
+    cols.forEach(function (c, ci) {
+      var y = (tallest - heights[ci]) / 2;
+      c.forEach(function (id) { pos[id] = { x: ci * (CARD_W + COL_GAP), y: y }; y += cardHeight(id, rels) + ROW_GAP; });
+    });
+    return pos;
+  }
+
+  // ---------- rendering ----------
+  var world = document.getElementById("world"), wires = document.getElementById("wires"), vp = document.getElementById("viewport");
+  var cardsById = {}, current = { ids: [], rels: [], pos: {} };
+
+  function render(refit) {
+    var vis = visibleRels(), rels = graphRels(vis);
+    var idSet = {};
+    rels.forEach(function (r) { idSet[r.from.node] = 1; idSet[r.to.node] = 1; });
+    if (S.focus) idSet[S.focus] = 1;
+    var ids = Object.keys(idSet);
+    var auto = layout(ids, rels);
+    var pos = {};
+    ids.forEach(function (id) { pos[id] = S.pos[id] || auto[id]; });
+    current = { ids: ids, rels: rels, pos: pos };
+
+    Array.prototype.slice.call(world.querySelectorAll(".card,.notice,.blank")).forEach(function (n) { n.remove(); });
+    Array.prototype.slice.call(vp.querySelectorAll(".notice,.blank")).forEach(function (n) { n.remove(); });
+    cardsById = {};
+    var selRel = RELS.filter(function (r) { return r.id === S.sel; })[0];
+    ids.forEach(function (id) { var c = drawCard(id, rels, pos[id], selRel); world.appendChild(c); cardsById[id] = c; });
+    drawWires(rels, selRel);
+
+    if (!ids.length) {
+      var msg = RELS.length
+        ? ["Ninguna relación coincide con los filtros.", "Probá con «Todo», activá declaradas e inferidas, o borrá la búsqueda."]
+        : ["No se encontraron relaciones.", "Se detectan a partir de los tests relationships de dbt y de los JOIN del SQL compilado. Corré dbt compile antes de colibri generate."];
+      vp.appendChild(h("div", { class: "blank" }, [h("div", null, [h("b", { text: msg[0] }), msg[1]])]));
+    } else if (S.focus) {
+      vp.appendChild(h("div", { class: "notice" }, ["Relaciones de ", h("b", { text: nodeName(S.focus) }),
+        h("button", { text: "Ver todas", onclick: function () { S.focus = null; S.pos = {}; render(true); renderLists(); } })]));
+    }
+    if (refit) fit();
+    renderLists(vis);
+  }
+
+  function drawCard(id, rels, p, selRel) {
+    var n = NODES[id] || { name: id, columns: [], kind: "external" };
+    var rows = cardRows(id, rels);
+    var colInfo = {}; n.columns.forEach(function (c) { colInfo[c.name] = c; });
+    var fkCols = {}; rels.forEach(function (r) { if (r.from.node === id && r.direction !== "unknown") fkCols[r.from.column] = 1; });
+    var hl = {};
+    if (selRel) { if (selRel.from.node === id) hl[selRel.from.column] = 1; if (selRel.to.node === id) hl[selRel.to.column] = 1; }
+
+    var head = h("div", { class: "hd", title: n.description || "" }, [
+      h("span", { class: "nm", text: n.name }), h("span", { class: "sc", text: n.schema || "" })]);
+    var card = h("div", { class: "card " + (n.kind === "model" || n.kind === "snapshot" ? "" : n.kind) + (S.focus === id ? " focus" : ""), "data-id": id }, [head]);
+    var kindLabel = { source: "source", external: "fuera de dbt", ephemeral: "ephemeral", snapshot: "snapshot" }[n.kind];
+    if (kindLabel) card.appendChild(h("div", { class: "kind", text: kindLabel }));
+    rows.forEach(function (c) {
+      var info = colInfo[c] || {};
+      var k = info.key ? h("span", { class: "k pk", text: "PK" }) : fkCols[c] ? h("span", { class: "k fk", text: "FK" }) : h("span", { class: "k" });
+      card.appendChild(h("div", { class: "row" + (hl[c] ? " hl" : ""), "data-col": c }, [k, h("span", { class: "cn", text: c, title: c }), h("span", { class: "ty", text: info.type || "" })]));
+    });
+    var hidden = n.columns.length - rows.length;
+    if (hidden > 0 || S.expanded[id]) {
+      card.appendChild(h("button", { class: "more", text: S.expanded[id] ? "mostrar menos" : "+ " + hidden + (hidden === 1 ? " columna" : " columnas"),
+        onclick: function (ev) { ev.stopPropagation(); S.expanded[id] = !S.expanded[id]; render(false); } }));
+    }
+    card.style.left = p.x + "px"; card.style.top = p.y + "px";
+    card.addEventListener("click", function (ev) { if (ev.defaultPrevented) return; selectTable(id); });
+    dragCard(card, head, id);
+    return card;
+  }
+
+  function anchor(id, col, side) {
+    var card = cardsById[id]; if (!card) return null;
+    var row = card.querySelector('[data-col="' + (window.CSS && CSS.escape ? CSS.escape(col) : col) + '"]');
+    var p = current.pos[id];
+    var y = row ? row.offsetTop + row.offsetHeight / 2 : 20;
+    return { x: p.x + (side === "r" ? card.offsetWidth : 0), y: p.y + y };
+  }
+
+  function drawWires(rels, selRel) {
+    while (wires.firstChild) wires.removeChild(wires.firstChild);
+    var styles = getComputedStyle(document.documentElement);
+    var base = styles.getPropertyValue("--wire").trim(), blue = styles.getPropertyValue("--blue").trim();
+    rels.forEach(function (r) {
+      var pf = current.pos[r.from.node], pt = current.pos[r.to.node]; if (!pf || !pt) return;
+      var fSide = pf.x <= pt.x ? "r" : "l", tSide = pf.x <= pt.x ? "l" : "r";
+      if (Math.abs(pf.x - pt.x) < 10) { fSide = "r"; tSide = "r"; }
+      var a = anchor(r.from.node, r.from.column, fSide), b = anchor(r.to.node, r.to.column, tSide);
+      if (!a || !b) return;
+      var sel = selRel && selRel.id === r.id, col = sel ? blue : base, w = sel ? 2.4 : 1.5;
+      var dx = Math.max(50, Math.abs(b.x - a.x) / 2), sa = fSide === "r" ? 1 : -1, sb = tSide === "r" ? 1 : -1;
+      var d = "M" + a.x + " " + a.y + " C" + (a.x + sa * dx) + " " + a.y + " " + (b.x + sb * dx) + " " + b.y + " " + b.x + " " + b.y;
+      var path = svgEl("path", { d: d, fill: "none", stroke: col, "stroke-width": w });
+      if (!r.declared) path.setAttribute("stroke-dasharray", "6 5");
+      wires.appendChild(path);
+      // cardinality marks: crow's foot on the N side, bar on each "1" side
+      if (r.cardinality === "N:1") {
+        [-6, 0, 6].forEach(function (o) { wires.appendChild(svgEl("line", { x1: a.x + sa * 13, y1: a.y, x2: a.x, y2: a.y + o, stroke: col, "stroke-width": w })); });
+      }
+      if (r.cardinality) {
+        wires.appendChild(svgEl("line", { x1: b.x + sb * 9, y1: b.y - 6, x2: b.x + sb * 9, y2: b.y + 6, stroke: col, "stroke-width": w }));
+        if (r.cardinality === "1:1") wires.appendChild(svgEl("line", { x1: a.x + sa * 9, y1: a.y - 6, x2: a.x + sa * 9, y2: a.y + 6, stroke: col, "stroke-width": w }));
+      }
+      var hit = svgEl("path", { d: d, fill: "none", stroke: "transparent", "stroke-width": 12, class: "hit" });
+      hit.addEventListener("click", function (ev) { ev.stopPropagation(); selectRel(r.id); });
+      wires.appendChild(hit);
+    });
+  }
+
+  // ---------- lists ----------
+  function renderLists(vis) {
+    vis = vis || visibleRels();
+    var relBox = document.getElementById("rels"), tabBox = document.getElementById("tables");
+    relBox.textContent = ""; tabBox.textContent = "";
+    document.getElementById("relsTitle").textContent = "Relaciones (" + vis.length + ")";
+    vis.forEach(function (r) {
+      var badge = r.declared ? h("span", { class: "badge b-decl", text: "test dbt" }) : h("span", { class: "badge b-inf", text: "inferida" });
+      relBox.appendChild(h("button", { class: "item" + (S.sel === r.id ? " sel" : ""), onclick: function () { selectRel(r.id); } }, [
+        h("div", { class: "t", text: nodeName(r.from.node) + (r.direction === "unknown" ? " ↔ " : " → ") + nodeName(r.to.node) }),
+        h("div", { class: "s" }, [r.from.column + " = " + r.to.column, badge])]));
+    });
+    if (!vis.length) relBox.appendChild(h("div", { class: "empty-list", text: "Sin resultados" }));
+    var count = {};
+    vis.forEach(function (r) { count[r.from.node] = (count[r.from.node] || 0) + 1; count[r.to.node] = (count[r.to.node] || 0) + 1; });
+    var ids = Object.keys(count).sort(function (a, b) { return count[b] - count[a] || nodeName(a).localeCompare(nodeName(b)); });
+    document.getElementById("tablesTitle").textContent = "Tablas (" + ids.length + ")";
+    ids.forEach(function (id) {
+      var n = NODES[id] || {};
+      tabBox.appendChild(h("button", { class: "item" + (S.focus === id ? " sel" : ""), onclick: function () { focusTable(id); } }, [
+        h("div", { class: "t", text: nodeName(id) }),
+        h("div", { class: "s", text: (n.schema ? n.schema + " · " : "") + count[id] + (count[id] === 1 ? " relación" : " relaciones") })]));
+    });
+  }
+
+  // ---------- panel ----------
+  var panel = document.getElementById("panel");
+  function sqlBlock(sql, cond) {
+    var pre = h("pre");
+    var kw = /\b(FROM|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|ON|AND|OR|AS)\b/g;
+    sql.split(/(\n)/).forEach(function (line) {
+      var i = cond ? line.indexOf(cond) : -1;
+      var parts = i >= 0 ? [[line.slice(0, i), 0], [cond, 1], [line.slice(i + cond.length), 0]] : [[line, 0]];
+      parts.forEach(function (p) {
+        if (p[1]) { pre.appendChild(h("span", { class: "hlc", text: p[0] })); return; }
+        var last = 0, m; kw.lastIndex = 0;
+        while ((m = kw.exec(p[0]))) { pre.appendChild(document.createTextNode(p[0].slice(last, m.index))); pre.appendChild(h("span", { class: "kw", text: m[0] })); last = m.index + m[0].length; }
+        pre.appendChild(document.createTextNode(p[0].slice(last)));
+      });
+    });
+    return pre;
+  }
+  function copyBtn(text) {
+    var b = h("button", { class: "cp", text: "Copiar" });
+    b.addEventListener("click", function () {
+      function done() { b.textContent = "Copiado"; setTimeout(function () { b.textContent = "Copiar"; }, 1400); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+      function fallback() { var t = h("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); done(); } catch (e) {} t.remove(); }
+    });
+    return b;
+  }
+  function originText(r) {
+    if (r.declared && r.inferred) return [h("span", { class: "badge b-decl", text: "test dbt", style: "margin:0" }), " y usada en el SQL"];
+    if (r.declared) return [h("span", { class: "badge b-decl", text: "test dbt", style: "margin:0" })];
+    var n = r.usages.length;
+    return [h("span", { class: "badge b-inf", text: "inferida", style: "margin:0" }), n ? " de " + n + (n === 1 ? " JOIN" : " JOINs") : " del linaje"];
+  }
+  function cardinalityText(r) {
+    if (r.cardinality === "N:1") return [h("b", { text: "N : 1" }), " — muchas filas de " + nodeName(r.from.node) + " por cada " + nodeName(r.to.node)];
+    if (r.cardinality === "1:1") return [h("b", { text: "1 : 1" })];
+    return [h("span", { class: "muted", text: "desconocida — falta un test unique en la clave" })];
+  }
+
+  function showRel(r) {
+    panel.textContent = ""; panel.dataset.mode = "detail";
+    panel.appendChild(h("div", { class: "eyebrow", text: "Relación" }));
+    panel.appendChild(h("div", { class: "ptitle" }, [ep(r.from), h("span", { class: "ar", text: r.direction === "unknown" ? "  ↔  " : "  →  " }), h("br"), ep(r.to)]));
+    panel.appendChild(h("div", { class: "kv" }, [
+      h("span", { class: "k2", text: "Cardinalidad" }), h("span", null, cardinalityText(r)),
+      h("span", { class: "k2", text: "Origen" }), h("span", null, originText(r)),
+      h("span", { class: "k2", text: "Test dbt" }), h("span", { text: r.declared ? "declarado" : "no declarado" })]));
+
+    if (r.derived.length) {
+      panel.appendChild(h("h4", { text: "Cómo se dedujo", style: "margin-left:0" }));
+      r.derived.forEach(function (d) {
+        panel.appendChild(h("div", { class: "box" }, [
+          h("p", null, [h("code", { text: nodeName(d.model) + "." + d.column }), " se toma tal cual de una columna que se une con ", h("code", { text: ep(r.to) }), ":"]),
+          h("div", { style: "height:6px" }), sqlBlock(d.sql, d.via)]));
+      });
+    }
+    if (r.usages.length) {
+      panel.appendChild(h("h4", { text: "Dónde se usa", style: "margin-left:0" }));
+      r.usages.forEach(function (u) {
+        panel.appendChild(h("div", { class: "box" }, [h("div", { class: "cap" }, [h("span", { text: nodeName(u.model) + ".sql" })]), sqlBlock(u.sql, u.condition)]));
+      });
+    }
+    if (r.suggestion) {
+      panel.appendChild(h("h4", { text: "Declararla en dbt", style: "margin-left:0" }));
+      panel.appendChild(h("div", { class: "warn" }, ["⚠️", h("span", { text: "Esta relación se usa pero no tiene test. Si una fila de " + nodeName(r.from.node) + " apunta a un " + r.to.column + " que no existe en " + nodeName(r.to.node) + ", nadie se entera." })]));
+      panel.appendChild(h("div", { class: "box" }, [h("div", { class: "cap" }, [h("span", { text: r.suggestion.path }), copyBtn(r.suggestion.yaml)]), h("pre", { text: r.suggestion.yaml })]));
+      if (r.suggestion.unique) {
+        panel.appendChild(h("p", { class: "muted", style: "margin:10px 0 6px;font-size:12px", text: "Y para que la cardinalidad quede clara, la clave de " + nodeName(r.to.node) + ":" }));
+        panel.appendChild(h("div", { class: "box" }, [h("div", { class: "cap" }, [h("span", { text: r.suggestion.unique.path }), copyBtn(r.suggestion.unique.yaml)]), h("pre", { text: r.suggestion.unique.yaml })]));
+      }
+    } else if (!r.declared && r.direction === "unknown") {
+      panel.appendChild(h("h4", { text: "Declararla en dbt", style: "margin-left:0" }));
+      panel.appendChild(h("div", { class: "box" }, [h("p", { class: "muted", text: "No se puede saber cuál de las dos columnas es la clave. Agregá un test unique a la clave y la relación va a mostrar su dirección y el YAML sugerido." })]));
+    }
+  }
+
+  function showTable(id) {
+    var n = NODES[id] || {};
+    panel.textContent = ""; panel.dataset.mode = "detail";
+    panel.appendChild(h("div", { class: "eyebrow", text: { source: "Source", external: "Tabla fuera de dbt", ephemeral: "Modelo ephemeral", snapshot: "Snapshot" }[n.kind] || "Modelo" }));
+    panel.appendChild(h("div", { class: "ptitle", text: n.name }));
+    if (n.schema) panel.appendChild(h("div", { class: "kv" }, [h("span", { class: "k2", text: "Base" }), h("span", { class: "mono", text: n.schema })]));
+    if (n.kind !== "external") panel.appendChild(h("p", { style: "margin:0 0 10px" }, [h("a", { class: "lnk", href: "index.html?model=" + encodeURIComponent(id), text: "Ver su linaje en el reporte →" })]));
+    if (n.description) panel.appendChild(h("div", { class: "box" }, [h("p", { text: n.description })]));
+    var mine = visibleRels().filter(function (r) { return r.from.node === id || r.to.node === id; });
+    panel.appendChild(h("h4", { text: "Relaciones (" + mine.length + ")", style: "margin-left:0" }));
+    var list = h("div", { class: "plist" });
+    mine.forEach(function (r) {
+      list.appendChild(h("button", { class: "item", onclick: function () { selectRel(r.id); } }, [
+        h("div", { class: "t", text: ep(r.from) + (r.direction === "unknown" ? " ↔ " : " → ") + ep(r.to) }),
+        h("div", { class: "s" }, [r.cardinality || "cardinalidad desconocida", r.declared ? h("span", { class: "badge b-decl", text: "test dbt" }) : h("span", { class: "badge b-inf", text: "inferida" })])]));
+    });
+    panel.appendChild(list);
+    if (S.focus !== id) panel.appendChild(h("button", { class: "lnk", text: "Ver solo las relaciones de " + n.name, onclick: function () { focusTable(id); } }));
+  }
+
+  function showSummary() {
+    panel.textContent = ""; panel.dataset.mode = "summary";
+    var decl = RELS.filter(function (r) { return r.declared; }).length;
+    var missing = RELS.filter(function (r) { return r.suggestion; }).length;
+    panel.appendChild(h("div", { class: "eyebrow", text: "Relaciones del proyecto" }));
+    panel.appendChild(h("div", { class: "ptitle", text: RELS.length + (RELS.length === 1 ? " relación" : " relaciones") }));
+    panel.appendChild(h("div", { class: "kv" }, [
+      h("span", { class: "k2", text: "Con test dbt" }), h("span", { text: String(decl) }),
+      h("span", { class: "k2", text: "Inferidas" }), h("span", { text: String(RELS.length - decl) }),
+      h("span", { class: "k2", text: "Sin test" }), h("span", { text: missing + " con YAML sugerido" })]));
+    panel.appendChild(h("div", { class: "box" }, [h("p", { text: "Tocá una línea o una relación de la lista para ver de dónde sale, dónde se usa y cómo declararla. Tocá una tabla para ver solo sus relaciones. Las tarjetas se pueden arrastrar." })]));
+  }
+
+  // ---------- actions ----------
+  function selectRel(id) { S.sel = id; var r = RELS.filter(function (x) { return x.id === id; })[0]; render(false); if (r) showRel(r); }
+  function selectTable(id) { S.sel = null; render(false); showTable(id); }
+  function focusTable(id) { S.focus = id; S.sel = null; S.pos = {}; render(true); showTable(id); }
+
+  // ---------- filters ----------
+  function chip(label, on, fn) { return h("button", { class: "chip" + (on ? " on" : ""), text: label, onclick: fn }); }
+  function renderFilters() {
+    var sc = document.getElementById("scope"), or = document.getElementById("origin");
+    sc.textContent = ""; or.textContent = "";
+    sc.appendChild(chip("Modelos", S.scope === "models", function () { S.scope = "models"; S.pos = {}; renderFilters(); render(true); }));
+    sc.appendChild(chip("Todo (con sources)", S.scope === "all", function () { S.scope = "all"; S.pos = {}; renderFilters(); render(true); }));
+    or.appendChild(chip("Declaradas", S.declared, function () { S.declared = !S.declared; renderFilters(); render(true); }));
+    or.appendChild(chip("Inferidas", S.inferred, function () { S.inferred = !S.inferred; renderFilters(); render(true); }));
+  }
+  var qTimer;
+  document.getElementById("q").addEventListener("input", function (ev) {
+    clearTimeout(qTimer); qTimer = setTimeout(function () { S.q = ev.target.value; S.pos = {}; render(true); }, 150);
+  });
+
+  // ---------- pan / zoom / drag ----------
+  function applyView() { world.style.transform = "translate(" + S.view.x + "px," + S.view.y + "px) scale(" + S.view.k + ")"; }
+  function bounds() {
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    current.ids.forEach(function (id) {
+      var p = current.pos[id], c = cardsById[id]; if (!p || !c) return;
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x + c.offsetWidth); y1 = Math.max(y1, p.y + c.offsetHeight);
+    });
+    return isFinite(x0) ? { x0: x0, y0: y0, x1: x1, y1: y1 } : null;
+  }
+  function fit() {
+    var b = bounds(); if (!b) return;
+    var W = vp.clientWidth, H = vp.clientHeight, pad = 50;
+    var k = Math.min(1.15, (W - 2 * pad) / (b.x1 - b.x0), (H - 2 * pad - 30) / (b.y1 - b.y0));
+    k = Math.max(0.2, k);
+    S.view.k = k;
+    S.view.x = (W - (b.x1 - b.x0) * k) / 2 - b.x0 * k;
+    S.view.y = (H - (b.y1 - b.y0) * k) / 2 - b.y0 * k + 10;
+    applyView();
+  }
+  function zoomAt(f, cx, cy) {
+    var k = Math.min(2.5, Math.max(0.15, S.view.k * f));
+    S.view.x = cx - (cx - S.view.x) * (k / S.view.k); S.view.y = cy - (cy - S.view.y) * (k / S.view.k); S.view.k = k; applyView();
+  }
+  vp.addEventListener("wheel", function (ev) {
+    ev.preventDefault(); var r = vp.getBoundingClientRect();
+    if (ev.ctrlKey || ev.metaKey || Math.abs(ev.deltaY) > Math.abs(ev.deltaX) * 2) zoomAt(Math.exp(-ev.deltaY * 0.0015), ev.clientX - r.left, ev.clientY - r.top);
+    else { S.view.x -= ev.deltaX; S.view.y -= ev.deltaY; applyView(); }
+  }, { passive: false });
+  document.getElementById("zin").onclick = function () { zoomAt(1.2, vp.clientWidth / 2, vp.clientHeight / 2); };
+  document.getElementById("zout").onclick = function () { zoomAt(1 / 1.2, vp.clientWidth / 2, vp.clientHeight / 2); };
+  document.getElementById("zfit").onclick = fit;
+  vp.addEventListener("mousedown", function (ev) {
+    if (ev.target.closest(".card,.controls,.legend,.notice") || ev.button !== 0) return;
+    var sx = ev.clientX, sy = ev.clientY, ox = S.view.x, oy = S.view.y, moved = false;
+    vp.classList.add("panning");
+    function mv(e) { if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 3) moved = true; S.view.x = ox + e.clientX - sx; S.view.y = oy + e.clientY - sy; applyView(); }
+    function up() { vp.classList.remove("panning"); document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up);
+      if (!moved && (S.sel || panel.dataset.mode !== "summary")) { S.sel = null; render(false); showSummary(); } }
+    document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+  });
+  function dragCard(card, handle, id) {
+    handle.addEventListener("mousedown", function (ev) {
+      if (ev.button !== 0) return; ev.stopPropagation();
+      var sx = ev.clientX, sy = ev.clientY, p = current.pos[id], ox = p.x, oy = p.y, moved = false;
+      function mv(e) {
+        var dx = (e.clientX - sx) / S.view.k, dy = (e.clientY - sy) / S.view.k;
+        if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+        p.x = ox + dx; p.y = oy + dy; S.pos[id] = { x: p.x, y: p.y };
+        card.style.left = p.x + "px"; card.style.top = p.y + "px";
+        drawWires(current.rels, RELS.filter(function (r) { return r.id === S.sel; })[0]);
+      }
+      function up(e) {
+        document.removeEventListener("mousemove", mv); document.removeEventListener("mouseup", up);
+        if (moved) { var block = function (ce) { ce.preventDefault(); ce.stopPropagation(); card.removeEventListener("click", block, true); }; card.addEventListener("click", block, true); }
+      }
+      document.addEventListener("mousemove", mv); document.addEventListener("mouseup", up);
+    });
+  }
+  window.addEventListener("resize", function () { fit(); });
+
+  // ---------- start ----------
+  var start = (location.hash.match(/node=([^&]+)/) || [])[1];
+  if (start) start = decodeURIComponent(start);
+  if (start && NODES[start]) S.focus = start;
+  else {
+    var ids = {}; visibleRels().forEach(function (r) { ids[r.from.node] = 1; ids[r.to.node] = 1; });
+    var n = Object.keys(ids).length;
+    if (n > MAX_ALL) {
+      var deg = {}; visibleRels().forEach(function (r) { deg[r.from.node] = (deg[r.from.node] || 0) + 1; deg[r.to.node] = (deg[r.to.node] || 0) + 1; });
+      S.focus = Object.keys(deg).sort(function (a, b) { return deg[b] - deg[a]; })[0];
+    }
+  }
+  renderFilters();
+  render(true);
+  if (S.focus) showTable(S.focus); else showSummary();
+})();
+</script>
+</body>
+</html>

@@ -41,6 +41,7 @@ where = ["src"]
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
+    "pyyaml",
     "ruff",
     "mypy",
     "build",

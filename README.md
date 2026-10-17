@@ -20,7 +20,7 @@ dbt docs generate        # genera catalog.json, necesario para resolver columnas
 colibri generate         # escribe dist/index.html
 ```
 
-Abrís `dist/index.html` en el navegador y listo. Es un único archivo, sin servidor ni dependencias externas: se puede mandar por mail, subir a un share o publicar en GitHub/GitLab Pages.
+Abrís `dist/index.html` en el navegador y listo. Son archivos estáticos, sin servidor ni dependencias externas: se pueden mandar por mail, subir a un share o publicar en GitHub/GitLab Pages.
 
 ```text
 Welcome to dbt-colibri for Teradata 🐦
@@ -34,6 +34,7 @@ Welcome to dbt-colibri for Teradata 🐦
          dbt project        : gold_banco
 [INFO] Extracting lineage data...
 [INFO] Generating report...
+[INFO] Found 8 relationships
 
 ✅ Report completed!
   📁 JSON: dist/colibri-manifest.json
@@ -52,8 +53,11 @@ flowchart LR
     C --> P
     P --> S["SQLGlot<br/>dialecto Teradata"]
     S --> L["Linaje por columna<br/>+ joins y filtros"]
-    L --> H["dist/index.html<br/>reporte autocontenido"]
-    L --> J["dist/colibri-manifest.json<br/>linaje en JSON"]
+    S --> R["Relaciones entre tablas<br/>tests dbt + JOINs"]
+    L --> H["dist/index.html<br/>reporte de linaje"]
+    R --> E["dist/relaciones.html<br/>diagrama ER"]
+    L --> J["dist/colibri-manifest.json<br/>linaje y relaciones en JSON"]
+    R --> J
 ```
 
 No se conecta a Teradata: trabaja solo con los archivos que dbt deja en `target/`.
@@ -104,6 +108,33 @@ Además de la vista por carpetas del proyecto, podés navegar por **base de dato
 Las tablas que se leen en el SQL pero no están declaradas como source (en el demo, `BDW_REF.TIPO_CAMBIO`) aparecen bajo su base, en este caso `bdw_ref`, marcadas como *hardcoded*. Sirve para encontrar dependencias que todavía no pasaron por `sources.yml`.
 
 <br clear="right"/>
+
+### 5. Relaciones entre tablas (diagrama ER)
+
+La pestaña **Relaciones** dibuja el modelo dimensional: qué columna de cada tabla apunta a qué clave de otra, con su cardinalidad.
+
+![Pestaña Relaciones en el reporte](docs/img/relaciones-tab.png)
+
+![Diagrama de relaciones con el detalle de fct_movimientos.cliente_sk → dim_cliente.cliente_sk](docs/img/relaciones.png)
+
+Las relaciones salen de dos lugares:
+
+| Línea | Origen | Ejemplo en el demo |
+|---|---|---|
+| continua | **Declarada**: un test `relationships` de dbt | `fct_movimientos.cuenta_sk → dim_cuenta` |
+| punteada | **Inferida**: un `JOIN ... ON a = b` del SQL compilado | `fct_movimientos.cliente_sk → dim_cliente`, que se une en el agregado mensual |
+
+Cuando el JOIN une tablas de staging con una dimensión, colibri sigue el linaje para llegar a la columna que importa en la capa Gold. Por ejemplo, `dim_cliente` hace `JOIN dim_sucursal ON clientes.sucursal_id = sucursal_sk`; como `dim_cliente.sucursal_sk` sale de `clientes.sucursal_id`, la relación se muestra como `dim_cliente.sucursal_sk → dim_sucursal.sucursal_sk`.
+
+La **cardinalidad** (la pata de gallo marca el lado N) sale de los tests `unique` o de las constraints `primary_key`. Sin ellos la línea se dibuja igual, pero sin cardinalidad.
+
+Al tocar una relación, el panel derecho muestra el JOIN exacto donde se usa y, si no tiene test, **el YAML listo para copiar** en el archivo que corresponde. El formato se adapta a tu versión de dbt: `tests` o `data_tests`, y `arguments:` desde la 1.10.5. Así, lo que el SQL ya da por hecho queda validado en cada `dbt test`.
+
+Otros detalles:
+- **Filtros:** solo modelos o también sources, y declaradas o inferidas.
+- **Navegación:** buscador de tabla o columna, zoom, y tarjetas que se pueden arrastrar.
+- **Foco:** al tocar una tabla se ven solo sus relaciones, con un link a su linaje en el reporte. En proyectos de más de 40 tablas arranca así, en la más conectada.
+- **Tema:** respeta el claro u oscuro que elegiste en el reporte.
 
 ---
 
@@ -180,12 +211,15 @@ colibri generate --manifest docs/demo/target/manifest.json \
 - Agrupa las tablas externas bajo su base de datos en el árbol.
 - Sin chequeo de versión contra PyPI y con telemetría apagada por defecto.
 - Oculta los botones de funciones pagas de Colibri Cloud (ERD, Saved Views, Git Blame), que en el original solo llevan a su página comercial.
+- Agrega la pestaña **Relaciones** con el diagrama ER, que en el original es una función paga.
+- Corrige el tipo de linaje de las columnas que pasan por un ephemeral: antes figuraban todas como *transformation*.
 
 ## Limitaciones
 
 - Las tablas OTF de Teradata (nombres de tres partes `datalake.db.tabla`) no se resuelven a nivel de columna.
 - Los modelos Python se saltean.
 - Si un modelo no está en `catalog.json` (por ejemplo, nunca se materializó), sus columnas no se pueden resolver.
+- Las relaciones inferidas solo toman igualdades simples entre columnas en el `ON` (`a.x = b.y`). Un JOIN con expresiones (`ON TRIM(a.x) = b.y`) no genera relación.
 
 ## Desarrollo
 

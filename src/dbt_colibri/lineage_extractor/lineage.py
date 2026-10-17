@@ -140,6 +140,18 @@ def lineage(
 
     return to_node(column, scope, dialect, trim_selects=trim_selects)
 
+# Comment placed on the NULL projections that stand in for an ephemeral model's
+# body, so lineage treats the ephemeral boundary as transparent.
+EPHEMERAL_STUB_MARK = "colibri:ephemeral"
+
+
+def _is_ephemeral_stub(select_expr: exp.Expression) -> bool:
+    comments = list(select_expr.comments or [])
+    if isinstance(select_expr, exp.Alias):
+        comments += select_expr.this.comments or []
+    return any(EPHEMERAL_STUB_MARK in c for c in comments)
+
+
 def classify_column_lineage(select_expr: exp.Expression) -> str:
     """
     Classify how a column was derived in the SELECT list.
@@ -148,6 +160,9 @@ def classify_column_lineage(select_expr: exp.Expression) -> str:
     def base_col_name(col: exp.Column) -> str:
         # Ignore table/CTE prefix
         return col.name
+
+    if _is_ephemeral_stub(select_expr):
+        return "pass-through"
 
     # Plain Column
     if isinstance(select_expr, exp.Column):
