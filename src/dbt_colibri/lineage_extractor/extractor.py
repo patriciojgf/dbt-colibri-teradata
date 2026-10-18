@@ -933,6 +933,26 @@ class DbtColumnLineageExtractor:
 
         return related_structure
 
+    @staticmethod
+    def _record_column_error(errors, model_node, column_name, exc):
+        """Record a column-level failure in the parsing errors report.
+
+        One entry per model and error, listing the affected columns, so a
+        failure that empties a model's lineage is visible in
+        colibri-parsing-errors.json instead of only in the console log.
+        """
+        error_type, message = type(exc).__name__, str(exc)
+        for entry in errors:
+            if (entry.get("node_id"), entry.get("error_type"), entry.get("error_message")) == (model_node, error_type, message):
+                entry.setdefault("columns", []).append(column_name)
+                return
+        errors.append({
+            "node_id": model_node,
+            "error_type": error_type,
+            "error_message": message,
+            "columns": [column_name],
+        })
+
     def extract_project_lineage(self):
         """
         Stream lineage extraction to minimize peak memory:
@@ -1081,10 +1101,12 @@ class DbtColumnLineageExtractor:
                                 self.logger.debug(f"No expression found for alias '{model_node}' '{column_name}'")
                         except Exception as e2:
                             self.logger.error(f"Fallback error on {column_name}: {e2}")
+                            self._record_column_error(errors, model_node, column_name, e2)
                     except Exception as e:
                         self.logger.error(
                             f"Unexpected error processing model {model_node}, column {column_name}: {e}"
                         )
+                        self._record_column_error(errors, model_node, column_name, e)
 
                 # Extract structural lineage (WHERE/HAVING/JOIN ON columns)
                 try:

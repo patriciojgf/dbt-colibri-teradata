@@ -146,6 +146,8 @@ Otros detalles:
 | `QUALIFY` | `QUALIFY ROW_NUMBER() OVER (PARTITION BY ...) = 1` |
 | `LOCKING ROW FOR ACCESS` | al inicio de la consulta |
 | `CAST ... FORMAT` | `CAST(c.Fecha_Alta AS DATE FORMAT 'YYYY-MM-DD')` |
+| `CHARACTER SET`, `[NOT] CASESPECIFIC` | `CAST(x AS VARCHAR(50) CHARACTER SET UNICODE NOT CASESPECIFIC)` |
+| `UNION ALL` en la raíz | registros reales `UNION ALL` filas default de la dimensión |
 | Funciones propias | `ZEROIFNULL`, `ADD_MONTHS`, `TRUNC(..., 'MM')` |
 | `TOP`, `SAMPLE` | `SELECT TOP 10 ...`, `... SAMPLE 100` |
 | Mayúsculas/minúsculas | `"BDW_STG"."clientes"` matchea con `CLIENTES` del catálogo |
@@ -213,6 +215,8 @@ colibri generate --manifest docs/demo/target/manifest.json \
 - Oculta los botones de funciones pagas de Colibri Cloud (ERD, Saved Views, Git Blame), que en el original solo llevan a su página comercial.
 - Agrega la pestaña **Relaciones** con el diagrama ER, que en el original es una función paga.
 - Corrige el tipo de linaje de las columnas que pasan por un ephemeral: antes figuraban todas como *transformation*.
+- Corrige el linaje de los modelos con `UNION ALL` en la raíz, que con sqlglot 30 quedaban con todas las columnas en *Unknown*.
+- Los errores por columna también se registran en `colibri-parsing-errors.json`, no solo en la consola.
 
 ## Limitaciones
 
